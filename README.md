@@ -45,7 +45,8 @@ AgentSeam is not:
 
 ## Documentation
 
-- `agentseam-project-outline.txt`: original project brief and product outline
+- `docs/v1-build-contract.md`: locked v1 implementation target and first-build decisions
+- `agentseam-project-outline.txt`: original product brief and planning archive
 - `docs/architecture.md`: system overview, boundaries, and state machine
 - `docs/repo-guide.md`: repo organization, naming, and file placement guidance
 - `docs/adr/`: architecture decision records for important early choices
@@ -79,6 +80,8 @@ The current focus is to establish:
 - clean repo conventions
 - lightweight architecture documentation
 - a small set of durable decisions before coding begins
+
+The current implementation source of truth is `docs/v1-build-contract.md`.
 
 ## Working Principles
 

@@ -1,4 +1,3 @@
-````markdown
 # AgentSeam — Project Brief
 
 ## One-line summary
@@ -110,8 +109,6 @@ Use a fast, modern, low-friction stack:
 - **pnpm** for package management
 - **Turborepo** only if needed later. Skip it at first if it slows you down.
 
-This stack is a strong default for a fast-moving React app in 2026. Next.js documents the App Router as the newer router, React’s docs show React 19.2 as current, Tailwind’s official upgrade guide covers v4, and shadcn/ui’s current docs include the latest CLI flow. :contentReference[oaicite:0]{index=0}
-
 ### My recommendation
 For v1, keep everything in **one Next.js app** unless you absolutely need separate packages.
 
@@ -133,7 +130,7 @@ AgentSeam Backend API
 Database
     ↓
 Approval Dashboard
-````
+```
 
 ### More detailed architecture
 
@@ -164,7 +161,7 @@ Approval Dashboard
                ▼
 ┌──────────────────────────────┐
 │       Supabase Postgres      │
-│ actions / approvals / logs   │
+│ actions first; events later  │
 └──────────────┬───────────────┘
                │
                ▼
@@ -263,6 +260,8 @@ A dashboard that shows pending actions and allows:
 Use Supabase Auth for user accounts.
 
 You may optionally mirror lightweight user profile fields in your own table later.
+
+For v1, store the auth user id in `approved_by` and `rejected_by` as text so the first implementation can stay simple.
 
 ### Table: `actions`
 
@@ -403,6 +402,8 @@ Request:
 ### List actions
 
 `GET /api/actions?status=pending`
+
+This is useful for the inbox, but it should stay secondary to the core create, decision, and result flow.
 
 ### Mark execution result
 
@@ -1112,10 +1113,3 @@ Nothing else matters until that works.
 That is the product skeleton.
 
 Once that loop works, you will understand the product much more clearly, and you can decide whether to go deeper.
-
----
-
-```
-
-A couple of quick stack notes so you have confidence saving this as-is: Next.js’ current docs recommend the App Router as the newer router, React’s official docs list **19.2** as the latest version, Tailwind’s upgrade guide is for **v4**, and shadcn/ui’s current docs cover the modern CLI flow. :contentReference[oaicite:1]{index=1}
-

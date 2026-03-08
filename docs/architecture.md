@@ -88,4 +88,6 @@ State transitions should be explicit in code and reflected in timestamps and act
 
 ## Source of Truth
 
+Use `docs/v1-build-contract.md` as the locked implementation target for the first build.
+
 The fuller product brief lives in `agentseam-project-outline.txt`. This document is the maintainable engineering summary, not the full ideation archive.
