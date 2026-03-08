@@ -8,8 +8,23 @@ import {
 
 import type { ActionStatus, ActionType } from "@/lib/utils/status";
 
+export const apiKeys = pgTable("api_keys", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  keyHash: text("key_hash").notNull(),
+  keyPrefix: text("key_prefix").notNull(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+});
+
+export type ApiKeyRow = typeof apiKeys.$inferSelect;
+export type NewApiKeyRow = typeof apiKeys.$inferInsert;
+
 export const actions = pgTable("actions", {
   id: uuid("id").defaultRandom().primaryKey(),
+  ownerUserId: text("owner_user_id"),
   agentId: text("agent_id").notNull(),
   actionType: text("action_type").$type<ActionType>().notNull(),
   status: text("status").$type<ActionStatus>().notNull().default("pending"),
