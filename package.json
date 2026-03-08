@@ -12,6 +12,8 @@
     "test:watch": "vitest",
     "sdk:build": "pnpm --filter @agentseam/sdk build",
     "sdk:test": "pnpm --filter @agentseam/sdk test",
+    "mcp:build": "pnpm --filter @agentseam/mcp-server build",
+    "mcp:test": "pnpm --filter @agentseam/mcp-server test",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
