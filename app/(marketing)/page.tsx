@@ -141,6 +141,195 @@ function FeatureCard({
   );
 }
 
+// Simulated action data for the live feed
+const DEMO_ACTIONS = [
+  { action: "delete_user", params: "usr_847", risk: "high", icon: "🗑️" },
+  { action: "send_email", params: "bulk_campaign", risk: "medium", icon: "📧" },
+  { action: "transfer_funds", params: "$2,400", risk: "high", icon: "💸" },
+  { action: "modify_permissions", params: "admin_role", risk: "high", icon: "🔐" },
+  { action: "publish_content", params: "blog_post", risk: "low", icon: "📝" },
+  { action: "delete_database", params: "prod_db", risk: "critical", icon: "💀" },
+];
+
+function LiveActionFeed() {
+  const [actions, setActions] = useState<Array<{
+    id: number;
+    action: string;
+    params: string;
+    status: "pending" | "approved" | "rejected";
+    icon: string;
+  }>>([]);
+  const [nextId, setNextId] = useState(0);
+
+  useEffect(() => {
+    // Add a new action every 2 seconds
+    const addInterval = setInterval(() => {
+      const template = DEMO_ACTIONS[Math.floor(Math.random() * DEMO_ACTIONS.length)];
+      setActions((prev) => {
+        const newActions = [
+          { id: nextId, ...template, status: "pending" as const },
+          ...prev.slice(0, 4),
+        ];
+        return newActions;
+      });
+      setNextId((n) => n + 1);
+    }, 2000);
+
+    // Resolve pending actions after a delay
+    const resolveInterval = setInterval(() => {
+      setActions((prev) =>
+        prev.map((a) =>
+          a.status === "pending" && Math.random() > 0.3
+            ? { ...a, status: Math.random() > 0.2 ? "approved" : "rejected" }
+            : a
+        )
+      );
+    }, 1500);
+
+    return () => {
+      clearInterval(addInterval);
+      clearInterval(resolveInterval);
+    };
+  }, [nextId]);
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div className="size-2 animate-pulse rounded-full bg-chart-3" />
+          <span className="text-sm font-medium text-foreground">Live Action Feed</span>
+        </div>
+        <span className="text-xs text-muted-foreground">Real-time simulation</span>
+      </div>
+      
+      {/* Actions list */}
+      <div className="divide-y divide-border">
+        {actions.length === 0 ? (
+          <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
+            Waiting for agent actions...
+          </div>
+        ) : (
+          actions.map((action) => (
+            <div
+              key={action.id}
+              className="flex items-center justify-between px-4 py-3 transition-all duration-500 animate-in slide-in-from-top-2"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-lg">{action.icon}</span>
+                <div>
+                  <p className="font-mono text-sm text-foreground">{action.action}</p>
+                  <p className="text-xs text-muted-foreground">{action.params}</p>
+                </div>
+              </div>
+              <div
+                className={`rounded-full px-2.5 py-0.5 text-xs font-medium transition-all duration-300 ${
+                  action.status === "pending"
+                    ? "bg-chart-5/20 text-chart-5 animate-pulse"
+                    : action.status === "approved"
+                    ? "bg-chart-3/20 text-chart-3"
+                    : "bg-destructive/20 text-destructive"
+                }`}
+              >
+                {action.status === "pending" ? "Pending" : action.status === "approved" ? "Approved" : "Rejected"}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TypewriterCode() {
+  const [displayedLines, setDisplayedLines] = useState(0);
+  const codeLines = [
+    { text: "import", highlight: "keyword" },
+    { text: " { AgentSeam } ", highlight: "normal" },
+    { text: "from", highlight: "keyword" },
+    { text: " 'agentseam'", highlight: "string" },
+  ];
+  
+  const fullCode = `import { AgentSeam } from 'agentseam'
+
+const seam = new AgentSeam({
+  apiKey: process.env.AGENTSEAM_KEY,
+  slack: { channel: '#approvals' }
+})
+
+// Wrap risky actions
+const result = await seam.guard({
+  action: 'delete_user',
+  payload: { userId },
+  reason: 'User requested deletion'
+})
+
+if (result.approved) {
+  await deleteUser(userId)
+}`;
+
+  const lines = fullCode.split('\n');
+
+  useEffect(() => {
+    if (displayedLines < lines.length) {
+      const timer = setTimeout(() => {
+        setDisplayedLines((d) => d + 1);
+      }, 150);
+      return () => clearTimeout(timer);
+    } else {
+      // Reset after a pause
+      const timer = setTimeout(() => {
+        setDisplayedLines(0);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [displayedLines, lines.length]);
+
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      {/* Terminal header */}
+      <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+        <div className="size-3 rounded-full bg-destructive/60" />
+        <div className="size-3 rounded-full bg-chart-5/60" />
+        <div className="size-3 rounded-full bg-chart-3/60" />
+        <span className="ml-2 font-mono text-xs text-muted-foreground">agent.ts</span>
+      </div>
+      
+      {/* Code content */}
+      <div className="p-4 font-mono text-sm">
+        <pre className="overflow-x-auto">
+          {lines.slice(0, displayedLines).map((line, i) => (
+            <div key={i} className="min-h-[1.5rem]">
+              <span className="mr-4 inline-block w-4 text-right text-muted-foreground/50">{i + 1}</span>
+              <span className="text-muted-foreground">
+                {line
+                  .replace(/(import|from|const|await|if)/g, '<kw>$1</kw>')
+                  .replace(/'[^']*'/g, '<str>$&</str>')
+                  .split(/(<kw>.*?<\/kw>|<str>.*?<\/str>)/)
+                  .map((part, j) => {
+                    if (part.startsWith('<kw>')) {
+                      return <span key={j} className="text-chart-3">{part.replace(/<\/?kw>/g, '')}</span>;
+                    }
+                    if (part.startsWith('<str>')) {
+                      return <span key={j} className="text-chart-5">{part.replace(/<\/?str>/g, '')}</span>;
+                    }
+                    return <span key={j}>{part}</span>;
+                  })}
+              </span>
+            </div>
+          ))}
+          {displayedLines < lines.length && (
+            <div className="min-h-[1.5rem]">
+              <span className="mr-4 inline-block w-4 text-right text-muted-foreground/50">{displayedLines + 1}</span>
+              <span className="animate-pulse text-primary">▌</span>
+            </div>
+          )}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 export default function MarketingPage() {
   return (
     <>
@@ -179,49 +368,47 @@ export default function MarketingPage() {
         <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent" />
       </section>
 
-      {/* Features Section */}
+      {/* Interactive Demo Section */}
       <section id="features" className="border-t border-border/40 px-6 py-24">
         <div className="mx-auto max-w-6xl">
           <div className="mb-16 text-center">
             <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-              Built for developers
+              See it in action
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
-              Simple APIs. Works with any agent framework. Deploy in minutes.
+              A few lines of code. Full visibility into every risky action.
             </p>
           </div>
           
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            <FeatureCard
-              icon={Shield}
-              title="Policy-based interception"
-              description="Define which actions require approval based on action type, parameters, or custom logic. Let safe actions pass through automatically."
-            />
-            <FeatureCard
-              icon={Bell}
-              title="Slack notifications"
-              description="Get instant notifications in your Slack workspace when an action needs approval. Approve or reject directly from Slack."
-            />
-            <FeatureCard
-              icon={Clock}
-              title="Configurable timeouts"
-              description="Set expiration times for pending approvals. Actions automatically expire if not reviewed within your specified window."
-            />
-            <FeatureCard
-              icon={Code}
-              title="Simple SDK"
-              description="Wrap your agent actions with a single function call. The SDK handles submission, polling, and result retrieval."
-            />
-            <FeatureCard
-              icon={Zap}
-              title="MCP proxy support"
-              description="Use our MCP proxy to add approval workflows to any MCP server without modifying the underlying tools."
-            />
-            <FeatureCard
-              icon={CheckCircle}
-              title="Full audit trail"
-              description="Every action, approval, and rejection is logged with timestamps and user attribution for compliance and debugging."
-            />
+          {/* Two-column demo: Code + Live Feed */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            <TypewriterCode />
+            <LiveActionFeed />
+          </div>
+          
+          {/* Feature highlights below */}
+          <div className="mt-16 grid gap-6 md:grid-cols-3">
+            <div className="text-center">
+              <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-primary/10">
+                <Shield className="size-5 text-primary" />
+              </div>
+              <h3 className="mb-2 font-semibold text-foreground">Policy-based</h3>
+              <p className="text-sm text-muted-foreground">Define rules for which actions need human review</p>
+            </div>
+            <div className="text-center">
+              <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-primary/10">
+                <Bell className="size-5 text-primary" />
+              </div>
+              <h3 className="mb-2 font-semibold text-foreground">Slack-native</h3>
+              <p className="text-sm text-muted-foreground">Approve or reject directly from Slack</p>
+            </div>
+            <div className="text-center">
+              <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-primary/10">
+                <Zap className="size-5 text-primary" />
+              </div>
+              <h3 className="mb-2 font-semibold text-foreground">MCP compatible</h3>
+              <p className="text-sm text-muted-foreground">Works with any MCP server out of the box</p>
+            </div>
           </div>
         </div>
       </section>
