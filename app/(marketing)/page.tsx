@@ -1,82 +1,122 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Shield, Clock, Bell, Code, CheckCircle, Zap } from "lucide-react";
+import { ArrowRight, Shield, Clock, Bell, Code, CheckCircle, Zap, Check, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
-function ProductDiagram() {
+function ApprovalFlowDemo() {
+  const [step, setStep] = useState(0);
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setStep((s) => (s + 1) % 5);
+    }, 2500);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
-    <div className="relative mx-auto mt-16 w-full max-w-3xl">
-      <div className="rounded-xl border border-border bg-card p-6 shadow-2xl shadow-primary/5">
-        {/* Terminal header */}
-        <div className="mb-4 flex items-center gap-2">
-          <div className="size-3 rounded-full bg-destructive/60" />
-          <div className="size-3 rounded-full bg-chart-5/60" />
-          <div className="size-3 rounded-full bg-chart-3/60" />
-          <span className="ml-3 font-mono text-xs text-muted-foreground">agent-workflow.ts</span>
+    <div className="relative mx-auto mt-16 w-full max-w-4xl">
+      <div className="grid gap-4 md:grid-cols-4">
+        {/* Step 1: Agent proposes action */}
+        <div
+          className={`rounded-xl border bg-card p-5 transition-all duration-500 ${
+            step >= 0 ? "border-border opacity-100 translate-y-0" : "border-transparent opacity-0 translate-y-4"
+          } ${step === 0 ? "ring-2 ring-primary/50" : ""}`}
+        >
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
+              <Code className="size-4 text-foreground" />
+            </div>
+            <span className="text-xs font-medium text-muted-foreground">Agent</span>
+          </div>
+          <p className="mb-3 text-sm font-medium text-foreground">Proposes action</p>
+          <div className="rounded-md bg-muted/50 p-2 font-mono text-xs text-muted-foreground">
+            <span className="text-chart-3">delete_user</span>
+            <br />
+            <span className="text-muted-foreground">id: usr_847</span>
+          </div>
         </div>
-        
-        {/* Code flow visualization */}
-        <div className="space-y-4 font-mono text-sm">
-          {/* Agent action */}
-          <div className="flex items-start gap-3">
-            <div className="flex size-6 shrink-0 items-center justify-center rounded bg-chart-1/20 text-chart-1">
-              <Code className="size-3.5" />
+
+        {/* Step 2: Action appears in inbox */}
+        <div
+          className={`rounded-xl border bg-card p-5 transition-all duration-500 ${
+            step >= 1 ? "border-border opacity-100 translate-y-0" : "border-transparent opacity-0 translate-y-4"
+          } ${step === 1 ? "ring-2 ring-primary/50" : ""}`}
+        >
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10">
+              <Shield className="size-4 text-primary" />
             </div>
-            <div>
-              <p className="text-muted-foreground">
-                <span className="text-chart-3">agent</span>.<span className="text-foreground">execute</span>(
-                <span className="text-chart-5">{'"delete_user"'}</span>, {"{"} <span className="text-chart-1">userId</span>: <span className="text-chart-5">{'"usr_123"'}</span> {"}"})
-              </p>
-            </div>
+            <span className="text-xs font-medium text-muted-foreground">AgentSeam</span>
           </div>
-          
-          {/* Arrow */}
-          <div className="flex items-center gap-3 pl-9">
-            <div className="h-8 w-px bg-border" />
+          <p className="mb-3 text-sm font-medium text-foreground">Queued for review</p>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="size-2 animate-pulse rounded-full bg-chart-5" />
+            Pending approval
           </div>
-          
-          {/* AgentSeam intercept */}
-          <div className="flex items-start gap-3">
-            <div className="flex size-6 shrink-0 items-center justify-center rounded bg-primary/20 text-primary">
-              <Shield className="size-3.5" />
+        </div>
+
+        {/* Step 3: Human approves */}
+        <div
+          className={`rounded-xl border bg-card p-5 transition-all duration-500 ${
+            step >= 2 ? "border-border opacity-100 translate-y-0" : "border-transparent opacity-0 translate-y-4"
+          } ${step === 2 ? "ring-2 ring-primary/50" : ""}`}
+        >
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-muted">
+              <Bell className="size-4 text-foreground" />
             </div>
-            <div className="flex-1 rounded-lg border border-primary/30 bg-primary/5 p-3">
-              <p className="mb-2 text-xs font-medium text-primary">AgentSeam Approval Required</p>
-              <p className="text-muted-foreground">
-                Action <span className="text-foreground">delete_user</span> needs approval
-              </p>
-              <div className="mt-3 flex gap-2">
-                <span className="inline-flex items-center gap-1 rounded-full bg-chart-3/20 px-2 py-0.5 text-xs text-chart-3">
-                  <CheckCircle className="size-3" /> Approve
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-destructive/20 px-2 py-0.5 text-xs text-destructive">
-                  Reject
-                </span>
-              </div>
-            </div>
+            <span className="text-xs font-medium text-muted-foreground">You</span>
           </div>
-          
-          {/* Arrow */}
-          <div className="flex items-center gap-3 pl-9">
-            <div className="h-8 w-px bg-border" />
+          <p className="mb-3 text-sm font-medium text-foreground">Review & approve</p>
+          <div className="flex gap-2">
+            <button
+              className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors ${
+                step >= 3 ? "bg-chart-3/20 text-chart-3" : "bg-muted text-muted-foreground"
+              }`}
+            >
+              <Check className="size-3" /> Approve
+            </button>
+            <button className="flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+              <X className="size-3" /> Reject
+            </button>
           </div>
-          
-          {/* Notification */}
-          <div className="flex items-start gap-3">
-            <div className="flex size-6 shrink-0 items-center justify-center rounded bg-chart-5/20 text-chart-5">
-              <Bell className="size-3.5" />
+        </div>
+
+        {/* Step 4: Action executes */}
+        <div
+          className={`rounded-xl border bg-card p-5 transition-all duration-500 ${
+            step >= 3 ? "border-border opacity-100 translate-y-0" : "border-transparent opacity-0 translate-y-4"
+          } ${step === 3 || step === 4 ? "ring-2 ring-chart-3/50" : ""}`}
+        >
+          <div className="mb-3 flex items-center gap-2">
+            <div className={`flex size-8 items-center justify-center rounded-lg transition-colors ${
+              step >= 4 ? "bg-chart-3/20" : "bg-muted"
+            }`}>
+              <CheckCircle className={`size-4 transition-colors ${step >= 4 ? "text-chart-3" : "text-foreground"}`} />
             </div>
-            <div>
-              <p className="text-muted-foreground">
-                Notified via <span className="text-foreground">Slack</span> • Waiting for response...
-              </p>
-            </div>
+            <span className="text-xs font-medium text-muted-foreground">Result</span>
+          </div>
+          <p className="mb-3 text-sm font-medium text-foreground">Action executed</p>
+          <div className={`text-xs transition-colors ${step >= 4 ? "text-chart-3" : "text-muted-foreground"}`}>
+            {step >= 4 ? "Successfully completed" : "Waiting..."}
           </div>
         </div>
       </div>
-      
-      {/* Decorative glow */}
-      <div className="pointer-events-none absolute -inset-4 -z-10 rounded-2xl bg-gradient-to-b from-primary/10 via-transparent to-transparent opacity-50 blur-2xl" />
+
+      {/* Progress indicator */}
+      <div className="mt-6 flex justify-center gap-2">
+        {[0, 1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className={`h-1 w-8 rounded-full transition-colors duration-300 ${
+              step >= i ? "bg-primary" : "bg-border"
+            }`}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -107,38 +147,33 @@ export default function MarketingPage() {
       {/* Hero Section */}
       <section className="relative overflow-hidden px-6 pb-24 pt-20 md:pt-32">
         <div className="mx-auto max-w-4xl text-center">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-sm text-muted-foreground">
-            <span className="size-1.5 rounded-full bg-chart-3" />
-            Now available for MCP servers
-          </div>
-          
           <h1 className="text-balance text-4xl font-bold tracking-tight text-foreground md:text-5xl lg:text-6xl">
-            Human-in-the-loop for
+            Your agents are powerful.
             <br />
-            <span className="text-primary">risky AI actions</span>
+            <span className="text-primary">Make sure they{"'"}re safe.</span>
           </h1>
           
-          <p className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
-            AgentSeam is a lightweight approval layer that intercepts risky agent actions,
-            notifies your team via Slack, and waits for human approval before proceeding.
+          <p className="mx-auto mt-6 max-w-xl text-pretty text-lg leading-relaxed text-muted-foreground">
+            A lightweight approval layer for risky AI agent actions. Review dangerous
+            operations before they execute.
           </p>
           
           <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Button size="lg" className="h-11 px-6" asChild>
+            <Button size="lg" className="h-12 px-6" asChild>
               <Link href="/signup">
-                Start building
+                Get started
                 <ArrowRight className="ml-2 size-4" />
               </Link>
             </Button>
-            <Button variant="outline" size="lg" className="h-11 px-6" asChild>
-              <Link href="https://github.com/cjones6489/AgentSeam">
+            <Button variant="outline" size="lg" className="h-12 px-6" asChild>
+              <Link href="https://github.com/cjones6489/AgentSeam" target="_blank" rel="noopener noreferrer">
                 View on GitHub
               </Link>
             </Button>
           </div>
         </div>
         
-        <ProductDiagram />
+        <ApprovalFlowDemo />
         
         {/* Background gradient */}
         <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent" />
@@ -149,10 +184,10 @@ export default function MarketingPage() {
         <div className="mx-auto max-w-6xl">
           <div className="mb-16 text-center">
             <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-              Everything you need for safe agent operations
+              Built for developers
             </h2>
-            <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
-              Built for developers who need to ship AI agents without compromising on safety.
+            <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
+              Simple APIs. Works with any agent framework. Deploy in minutes.
             </p>
           </div>
           
@@ -253,21 +288,21 @@ if (result.status === "approved") {
       <section className="border-t border-border/40 px-6 py-24">
         <div className="mx-auto max-w-3xl text-center">
           <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">
-            Ready to ship safer agents?
+            Start building
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
-            Get started in minutes. Free for development, predictable pricing for production.
+            Free to get started. No credit card required.
           </p>
           <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Button size="lg" className="h-11 px-6" asChild>
+            <Button size="lg" className="h-12 px-6" asChild>
               <Link href="/signup">
-                Get started for free
+                Get started
                 <ArrowRight className="ml-2 size-4" />
               </Link>
             </Button>
-            <Button variant="outline" size="lg" className="h-11 px-6" asChild>
-              <Link href="https://github.com/cjones6489/AgentSeam">
-                Read the docs
+            <Button variant="outline" size="lg" className="h-12 px-6" asChild>
+              <Link href="https://github.com/cjones6489/AgentSeam" target="_blank" rel="noopener noreferrer">
+                Documentation
               </Link>
             </Button>
           </div>
