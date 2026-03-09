@@ -73,6 +73,9 @@ export default function SignupPage() {
   return (
     <Card className="border-border/50 bg-card">
       <CardHeader className="text-center">
+        <Link href="/" className="mb-2 inline-block text-lg font-semibold text-primary hover:text-primary/80">
+          AgentSeam
+        </Link>
         <CardTitle className="text-xl">Create an account</CardTitle>
         <CardDescription className="text-[13px]">
           Sign up to start reviewing agent actions.
