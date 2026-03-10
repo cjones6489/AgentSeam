@@ -20,17 +20,17 @@
 
 | Severity | Total | Done | Partial | Todo |
 |----------|-------|------|---------|------|
-| Critical | 3 | 0 | 1 | 2 |
-| High | 16 | 2 | 0 | 14 |
-| Medium | 32 | 0 | 0 | 32 |
+| Critical | 3 | 1 | 1 | 1 |
+| High | 16 | 5 | 0 | 11 |
+| Medium | 32 | 3 | 0 | 29 |
 | Low | 40 | 0 | 0 | 40 |
-| **Total** | **91** | **2** | **1** | **88** |
+| **Total** | **91** | **9** | **1** | **81** |
 
 ---
 
 ## Critical
 
-### C1 — Live production secrets may be tracked in git [TODO]
+### C1 — Live production secrets may be tracked in git [DONE]
 
 **Agent:** Security
 **Files:** `.env.local`
@@ -45,7 +45,7 @@ Git status showed `M .env.local` (modified tracked file). Supabase DB password, 
 
 ---
 
-### C2 — No Row Level Security (RLS) policies on Supabase tables [TODO]
+### C2 — No Row Level Security (RLS) policies on Supabase tables [DONE]
 
 **Agent:** Database
 **Files:** `drizzle/` migrations, Supabase dashboard
@@ -101,7 +101,7 @@ No rate limiting on API routes, proxy, or Slack callbacks. An attacker with a va
 
 ---
 
-### H2 — No CSRF protection on session-based routes [TODO]
+### H2 — No CSRF protection on session-based routes [DONE]
 
 **Agent:** Security
 **Files:** `app/api/actions/[id]/approve/route.ts`, `app/api/actions/[id]/reject/route.ts`, `app/api/keys/route.ts`, `app/api/slack/config/route.ts`
@@ -115,7 +115,7 @@ Approve/reject, key management, and Slack config routes use session cookies but 
 
 ---
 
-### H3 — Proxy failover bypasses authentication and cost tracking [TODO]
+### H3 — Proxy failover bypasses authentication and cost tracking [DONE]
 
 **Agent:** Security, API Routes
 **Files:** `apps/proxy/src/routes/openai.ts`
@@ -144,7 +144,7 @@ Approve/reject, key management, and Slack config routes use session cookies but 
 
 ---
 
-### H5 — No request body size limits [TODO]
+### H5 — No request body size limits [DONE]
 
 **Agent:** Security, API Routes
 **Files:** `apps/proxy/src/routes/openai.ts`, `app/api/` routes
@@ -551,7 +551,7 @@ An authenticated user could create unlimited keys.
 
 ---
 
-### M22 — Failover bypasses cost tracking [TODO]
+### M22 — Failover bypasses cost tracking [DONE]
 
 **Agent:** API Routes
 **Files:** `apps/proxy/src/routes/openai.ts`
@@ -562,7 +562,7 @@ Catch block failover to OpenAI produces no cost events. (Overlaps with H3.)
 
 ---
 
-### M23 — `passThroughOnException` could forward unauthenticated requests [TODO]
+### M23 — `passThroughOnException` could forward unauthenticated requests [DONE]
 
 **Agent:** API Routes
 **Files:** `apps/proxy/src/routes/openai.ts`
@@ -606,7 +606,7 @@ Unlike approve/reject, `markResult` does not verify the action hasn't expired be
 
 ---
 
-### M27 — SSRF potential in webhook URL validation [TODO]
+### M27 — SSRF potential in webhook URL validation [DONE]
 
 **Agent:** Security
 **Files:** `app/api/slack/config/route.ts` or validation logic

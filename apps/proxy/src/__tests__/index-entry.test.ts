@@ -1,7 +1,7 @@
 /**
  * Integration tests for the main Worker entry point (index.ts).
  * Tests the full request→route→response flow without hitting OpenAI,
- * covering body parsing, JSON validation, failover, and routing logic.
+ * covering body parsing, JSON validation, fail-closed behavior, body size limits, and routing logic.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 
@@ -221,17 +221,9 @@ describe("Worker entry point routing", () => {
     });
   });
 
-  describe("failover path", () => {
-    it("falls back to OpenAI when route handler throws", async () => {
-      let failoverCalled = false;
-      globalThis.fetch = vi.fn().mockImplementation(async (url: string) => {
-        if (url.includes("api.openai.com")) {
-          failoverCalled = true;
-          return new Response(JSON.stringify({ choices: [], model: "gpt-4o-mini" }), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          });
-        }
+  describe("fail-closed behavior", () => {
+    it("returns 502 when route handler throws (never forwards to origin)", async () => {
+      globalThis.fetch = vi.fn().mockImplementation(async () => {
         throw new Error("Simulated internal error");
       });
 
@@ -249,25 +241,44 @@ describe("Worker entry point routing", () => {
       });
 
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
-      expect(failoverCalled).toBe(true);
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(502);
+      const body = await res.json();
+      expect(body.error).toBe("internal_error");
     });
 
-    it("failover preserves the original body text", async () => {
-      let capturedBody: string | null = null;
-      const originalBody = JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: "preserve me" }],
-        custom_field: "keep this",
+    it("does not call passThroughOnException", async () => {
+      const ctx = makeCtx();
+      const req = new Request("http://localhost/health");
+      await entrypoint.fetch(req, makeEnv(), ctx);
+      expect(ctx.passThroughOnException).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("body size limits", () => {
+    it("rejects requests with Content-Length exceeding 1MB", async () => {
+      const req = new Request("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "X-AgentSeam-Auth": "test-platform-key",
+          "Content-Type": "application/json",
+          "Content-Length": "2000000",
+        },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: [] }),
       });
 
-      globalThis.fetch = vi.fn().mockImplementation(async (url: string, init: RequestInit) => {
-        if (url.includes("api.openai.com")) {
-          capturedBody = init.body as string;
-          return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
-        }
-        throw new Error("Simulated error");
-      });
+      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
+      expect(res.status).toBe(413);
+      const body = await res.json();
+      expect(body.error).toBe("payload_too_large");
+    });
+
+    it("allows requests with Content-Length under 1MB", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ choices: [], model: "gpt-4o-mini" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
 
       const req = new Request("http://localhost/v1/chat/completions", {
         method: "POST",
@@ -276,18 +287,11 @@ describe("Worker entry point routing", () => {
           Authorization: "Bearer sk-test",
           "Content-Type": "application/json",
         },
-        body: originalBody,
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
       });
 
-      await entrypoint.fetch(req, makeEnv(), makeCtx());
-      expect(capturedBody).toBe(originalBody);
-    });
-
-    it("passThroughOnException is called on every request", async () => {
-      const ctx = makeCtx();
-      const req = new Request("http://localhost/health");
-      await entrypoint.fetch(req, makeEnv(), ctx);
-      expect(ctx.passThroughOnException).toHaveBeenCalled();
+      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
+      expect(res.status).not.toBe(413);
     });
   });
 });

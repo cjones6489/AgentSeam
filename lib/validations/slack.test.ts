@@ -32,6 +32,62 @@ describe("slackConfigInputSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects SSRF bypass via subdomain (hooks.slack.com.evil.com)", () => {
+    const result = slackConfigInputSchema.safeParse({
+      webhookUrl: "https://hooks.slack.com.evil.com/services/T00/B00/xxxx",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects URL with port number", () => {
+    const result = slackConfigInputSchema.safeParse({
+      webhookUrl: "https://hooks.slack.com:8443/services/T00/B00/xxxx",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects URL with username/password", () => {
+    const result = slackConfigInputSchema.safeParse({
+      webhookUrl: "https://user:pass@hooks.slack.com/services/T00/B00/xxxx",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects URL with query string", () => {
+    const result = slackConfigInputSchema.safeParse({
+      webhookUrl: "https://hooks.slack.com/services/T00/B00/xxxx?redirect=evil.com",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects URL with hash fragment", () => {
+    const result = slackConfigInputSchema.safeParse({
+      webhookUrl: "https://hooks.slack.com/services/T00/B00/xxxx#fragment",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects URL with non-standard path prefix", () => {
+    const result = slackConfigInputSchema.safeParse({
+      webhookUrl: "https://hooks.slack.com/api/T00/B00/xxxx",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts /workflows/ path prefix", () => {
+    const result = slackConfigInputSchema.safeParse({
+      webhookUrl: "https://hooks.slack.com/workflows/T00/B00/xxxx",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts /triggers/ path prefix", () => {
+    const result = slackConfigInputSchema.safeParse({
+      webhookUrl: "https://hooks.slack.com/triggers/T00/B00/xxxx",
+    });
+    expect(result.success).toBe(true);
+  });
+
   it("rejects a non-URL string", () => {
     const result = slackConfigInputSchema.safeParse({
       webhookUrl: "not-a-url",

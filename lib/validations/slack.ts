@@ -1,11 +1,31 @@
 import { z } from "zod";
 
+const ALLOWED_SLACK_PATH_PREFIXES = ["/services/", "/workflows/", "/triggers/"];
+
+function isSlackWebhookUrl(raw: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return false;
+  }
+
+  if (parsed.protocol !== "https:") return false;
+  if (parsed.hostname !== "hooks.slack.com") return false;
+  if (parsed.port !== "") return false;
+  if (parsed.username || parsed.password) return false;
+  if (parsed.search || parsed.hash) return false;
+
+  return ALLOWED_SLACK_PATH_PREFIXES.some((p) => parsed.pathname.startsWith(p));
+}
+
 export const slackConfigInputSchema = z.object({
   webhookUrl: z
     .string()
     .url()
-    .refine((url) => url.startsWith("https://hooks.slack.com/"), {
-      message: "Webhook URL must start with https://hooks.slack.com/",
+    .refine(isSlackWebhookUrl, {
+      message:
+        "Webhook URL must be a valid https://hooks.slack.com/ URL with a /services/, /workflows/, or /triggers/ path",
     }),
   channelName: z.string().trim().max(80).optional(),
   isActive: z.boolean().optional(),

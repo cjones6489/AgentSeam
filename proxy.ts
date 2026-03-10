@@ -2,7 +2,43 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { createProxySupabaseClient } from "@/lib/auth/supabase";
 
+const MAX_BODY_BYTES = 1_048_576; // 1MB
+
 export async function proxy(request: NextRequest) {
+  // --- CSRF: Origin validation for state-changing API requests ---
+  if (
+    request.nextUrl.pathname.startsWith("/api/") &&
+    ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)
+  ) {
+    const origin = request.headers.get("origin");
+    if (origin) {
+      const host =
+        request.headers.get("x-forwarded-host") || request.headers.get("host");
+      try {
+        if (new URL(origin).host !== host) {
+          return NextResponse.json(
+            { error: "Cross-origin request blocked" },
+            { status: 403 },
+          );
+        }
+      } catch {
+        return NextResponse.json(
+          { error: "Invalid origin" },
+          { status: 400 },
+        );
+      }
+    }
+
+    // Body size check
+    const contentLength = request.headers.get("content-length");
+    if (contentLength && parseInt(contentLength, 10) > MAX_BODY_BYTES) {
+      return NextResponse.json(
+        { error: "Payload too large" },
+        { status: 413 },
+      );
+    }
+  }
+
   const nonce = crypto.randomUUID();
   const isDev = process.env.NODE_ENV === "development";
 

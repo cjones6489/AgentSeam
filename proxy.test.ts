@@ -9,10 +9,17 @@ vi.mock("@/lib/auth/supabase", () => ({
 
 import { proxy } from "./proxy";
 
-function makeRequest(url = "https://example.com/dashboard") {
-  return new Request(url, {
+function makeRequest(
+  url = "https://example.com/dashboard",
+  init?: RequestInit,
+) {
+  const req = new Request(url, {
     headers: new Headers({ cookie: "session=abc" }),
+    ...init,
   });
+  // Simulate NextRequest.nextUrl
+  (req as any).nextUrl = new URL(url);
+  return req;
 }
 
 describe("proxy()", () => {
@@ -178,6 +185,143 @@ describe("proxy()", () => {
       expect(nonce).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
       );
+    });
+  });
+
+  describe("CSRF protection", () => {
+    it("blocks cross-origin POST to /api/ routes", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "POST",
+        headers: new Headers({
+          cookie: "session=abc",
+          origin: "https://evil.com",
+          host: "example.com",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).toBe(403);
+      const body = await response.json();
+      expect(body.error).toBe("Cross-origin request blocked");
+    });
+
+    it("allows same-origin POST to /api/ routes", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "POST",
+        headers: new Headers({
+          cookie: "session=abc",
+          origin: "https://example.com",
+          host: "example.com",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).not.toBe(403);
+    });
+
+    it("allows POST to /api/ routes without Origin header (non-browser)", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "POST",
+        headers: new Headers({
+          cookie: "session=abc",
+          host: "example.com",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).not.toBe(403);
+    });
+
+    it("skips CSRF check for GET requests", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "GET",
+        headers: new Headers({
+          cookie: "session=abc",
+          origin: "https://evil.com",
+          host: "example.com",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).not.toBe(403);
+    });
+
+    it("skips CSRF check for non-API routes", async () => {
+      const req = makeRequest("https://example.com/dashboard", {
+        method: "POST",
+        headers: new Headers({
+          cookie: "session=abc",
+          origin: "https://evil.com",
+          host: "example.com",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).not.toBe(403);
+    });
+
+    it("returns 400 for malformed Origin header", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "POST",
+        headers: new Headers({
+          cookie: "session=abc",
+          origin: "not-a-valid-url",
+          host: "example.com",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).toBe(400);
+    });
+
+    it("uses x-forwarded-host when available", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "POST",
+        headers: new Headers({
+          cookie: "session=abc",
+          origin: "https://myapp.vercel.app",
+          host: "internal-host",
+          "x-forwarded-host": "myapp.vercel.app",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).not.toBe(403);
+    });
+  });
+
+  describe("body size limits", () => {
+    it("rejects POST to /api/ with Content-Length exceeding 1MB", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "POST",
+        headers: new Headers({
+          cookie: "session=abc",
+          host: "example.com",
+          "content-length": "2000000",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).toBe(413);
+      const body = await response.json();
+      expect(body.error).toBe("Payload too large");
+    });
+
+    it("allows POST to /api/ with Content-Length under 1MB", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "POST",
+        headers: new Headers({
+          cookie: "session=abc",
+          host: "example.com",
+          "content-length": "500",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).not.toBe(413);
+    });
+
+    it("allows POST to /api/ without Content-Length header", async () => {
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "POST",
+        headers: new Headers({
+          cookie: "session=abc",
+          host: "example.com",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).not.toBe(413);
     });
   });
 
