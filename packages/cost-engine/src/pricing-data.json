@@ -1,0 +1,58 @@
+{
+  "openai/gpt-4o": {
+    "inputPerMTok": 2.50,
+    "cachedInputPerMTok": 1.25,
+    "outputPerMTok": 10.00
+  },
+  "openai/gpt-4o-mini": {
+    "inputPerMTok": 0.15,
+    "cachedInputPerMTok": 0.075,
+    "outputPerMTok": 0.60
+  },
+  "openai/gpt-4.1": {
+    "inputPerMTok": 2.00,
+    "cachedInputPerMTok": 0.50,
+    "outputPerMTok": 8.00
+  },
+  "openai/gpt-4.1-mini": {
+    "inputPerMTok": 0.40,
+    "cachedInputPerMTok": 0.10,
+    "outputPerMTok": 1.60
+  },
+  "openai/o3-mini": {
+    "inputPerMTok": 1.10,
+    "cachedInputPerMTok": 0.55,
+    "outputPerMTok": 4.40
+  },
+  "anthropic/claude-sonnet-4-6": {
+    "inputPerMTok": 3.00,
+    "cachedInputPerMTok": 0.30,
+    "cacheWrite5mPerMTok": 3.75,
+    "cacheWrite1hPerMTok": 6.00,
+    "outputPerMTok": 15.00
+  },
+  "anthropic/claude-haiku-3.5": {
+    "inputPerMTok": 0.80,
+    "cachedInputPerMTok": 0.08,
+    "cacheWrite5mPerMTok": 1.00,
+    "cacheWrite1hPerMTok": 1.60,
+    "outputPerMTok": 4.00
+  },
+  "anthropic/claude-opus-4": {
+    "inputPerMTok": 15.00,
+    "cachedInputPerMTok": 1.50,
+    "cacheWrite5mPerMTok": 18.75,
+    "cacheWrite1hPerMTok": 30.00,
+    "outputPerMTok": 75.00
+  },
+  "google/gemini-2.5-pro": {
+    "inputPerMTok": 1.25,
+    "cachedInputPerMTok": 0.3125,
+    "outputPerMTok": 10.00
+  },
+  "google/gemini-2.5-flash": {
+    "inputPerMTok": 0.15,
+    "cachedInputPerMTok": 0.0375,
+    "outputPerMTok": 0.60
+  }
+}

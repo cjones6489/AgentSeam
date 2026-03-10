@@ -5,36 +5,57 @@ alwaysApply: true
 
 # AgentSeam Core
 
-AgentSeam is a lightweight approval layer for risky AI agent actions.
+AgentSeam is the FinOps layer for AI agents — a transparent proxy that tracks
+costs and enforces budgets for LLM API calls and MCP tool invocations.
 
-## Product Focus
+## The #1 Rule: Developer Simplicity
 
-- Prove the core loop first: propose action, approve or reject, execute or block, log result.
-- Optimize for the smallest useful v1, not enterprise breadth.
-- Keep the product web-first, cross-stack, and easy for developers to adopt.
-- If scope is unclear, prefer the path that gets one end-to-end demo working sooner.
+The developer experience is ONE thing: change your base URL. No packages to
+install, no clients to wrap, no decorators, no config files. If setup ever
+requires more than an API key and a base URL change, we've gone wrong.
 
-## Default Stack
+All complexity is OUR complexity, not the developer's.
 
-- Next.js App Router app + pnpm workspace (`packages/sdk`, `packages/mcp-server`, `packages/mcp-proxy`)
-- TypeScript
-- Tailwind CSS + shadcn/ui
-- Supabase for auth and Postgres
-- Drizzle ORM
-- Zod for validation
-- pnpm only
+## V1 Surface Area (four things only)
+
+1. Change your base URL
+2. See your costs in a dashboard
+3. Set a budget
+4. Get blocked when you exceed it
+
+Everything else is post-launch. Consult `docs/finops-pivot-roadmap.md`.
+
+## Stack
+
+- **Proxy:** Cloudflare Workers (TypeScript, Wrangler) at `apps/proxy/`
+- **Dashboard:** Next.js App Router on Vercel (existing app)
+- **Budget state:** Upstash Redis (atomic Lua scripts)
+- **Database:** Supabase Postgres via Drizzle ORM
+  - Dashboard connects via `postgres` driver
+  - Proxy connects via `node-postgres` + Cloudflare Hyperdrive
+- **UI:** Tailwind CSS + shadcn/ui
+- **Validation:** Zod
+- **Package manager:** pnpm only
 
 ## Build Principles
 
 - Prefer boring, explicit implementations over clever abstractions.
 - Keep files and functions small; extract only when reuse or clarity is obvious.
-- Make state transitions explicit, especially for action lifecycle changes.
+- Use microdollars (integers) for all cost math. No floating point for money.
 - Validate all external input at the boundary.
-- Keep the SDK tiny; do not turn it into a framework.
+- The proxy must never modify the LLM response. It is transparent.
+- Budget enforcement is identity-based, not route-based (avoid LiteLLM's bugs).
 
 ## Guardrails
 
-- The core approval loop is proven. Continue to prefer focused, incremental features over enterprise breadth.
-- Do not add realtime, policy engines, or broad governance features without a clear product reason.
-- Keep the UI cleaner and simpler than the backend.
-- When product intent is ambiguous, consult `agentseam-project-outline.txt`.
+- Do not build features beyond the V1 surface area without explicit decision.
+- Do not add config-heavy setup flows. LiteLLM's Docker+Postgres+Redis+YAML is the anti-pattern.
+- Keep the dashboard simpler than the proxy. The proxy is the product.
+- When product intent is ambiguous, consult `docs/finops-pivot-roadmap.md`.
+
+## Reference Documents
+
+- `docs/finops-pivot-roadmap.md` — master build roadmap
+- `docs/finops-pivot-tech-audit.md` — technology sanity check
+- `docs/claude-research/compass_artifact_wf-4db73083-*` — competitive landscape
+- `docs/claude-research/compass_artifact_wf-40b71591-*` — technical build spec

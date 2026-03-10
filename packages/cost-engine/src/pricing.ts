@@ -1,0 +1,33 @@
+import type { ModelPricing } from "./types.js";
+import pricingData from "./pricing-data.json";
+
+const pricingMap = pricingData as Record<string, ModelPricing>;
+
+/**
+ * Look up pricing for a model. Returns null if the model is not in the
+ * curated pricing database.
+ *
+ * @param provider - e.g. "openai", "anthropic", "google"
+ * @param model - e.g. "gpt-4o", "claude-sonnet-4-6", "gemini-2.5-flash"
+ */
+export function getModelPricing(
+  provider: string,
+  model: string,
+): ModelPricing | null {
+  return pricingMap[`${provider}/${model}`] ?? null;
+}
+
+/**
+ * Compute a single cost component in **unrounded microdollars** (float).
+ *
+ * Dimensional analysis:
+ *   tokens × ($/MTok) = tokens × ($ / 10^6 tokens) × 10^6 µ$/$ = microdollars
+ *
+ * The caller sums all components and calls `Math.round()` once to get the
+ * final integer microdollar value. Rounding once at the end avoids
+ * accumulating per-component rounding errors.
+ */
+export function costComponent(tokens: number, ratePerMTok: number): number {
+  if (tokens <= 0 || ratePerMTok <= 0) return 0;
+  return tokens * ratePerMTok;
+}

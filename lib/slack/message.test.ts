@@ -8,6 +8,12 @@ import {
   buildTestMessage,
 } from "./message";
 
+// SlackBlock uses an index signature ([key: string]: unknown), so direct
+// narrowing casts fail TS2352. This helper routes through `unknown`.
+function narrowBlock<T>(block: unknown): T {
+  return block as T;
+}
+
 function makeAction(overrides: Partial<ActionRecord> = {}): ActionRecord {
   return {
     id: "550e8400-e29b-41d4-a716-446655440000",
@@ -56,7 +62,7 @@ describe("buildPendingMessage", () => {
 
   it("has a header block", () => {
     const msg = buildPendingMessage(makeAction(), DASHBOARD);
-    const header = msg.blocks[0] as { type: string; text: { text: string } };
+    const header = narrowBlock<{ type: string; text: { text: string } }>(msg.blocks[0]);
 
     expect(header.type).toBe("header");
     expect(header.text.text).toBe("New Action Pending Approval");
@@ -64,7 +70,7 @@ describe("buildPendingMessage", () => {
 
   it("shows type and agent in section fields", () => {
     const msg = buildPendingMessage(makeAction(), DASHBOARD);
-    const section = msg.blocks[1] as { fields: { text: string }[] };
+    const section = narrowBlock<{ fields: { text: string }[] }>(msg.blocks[1]);
 
     expect(section.fields[0].text).toContain("send_email");
     expect(section.fields[1].text).toContain("demo-agent");
@@ -75,7 +81,7 @@ describe("buildPendingMessage", () => {
       payload: { a: "1", b: "2", c: "3", d: "4", e: "5" },
     });
     const msg = buildPendingMessage(action, DASHBOARD);
-    const payloadSection = msg.blocks[2] as { text: { text: string } };
+    const payloadSection = narrowBlock<{ text: { text: string } }>(msg.blocks[2]);
 
     expect(payloadSection.text.text).toContain("*a:*");
     expect(payloadSection.text.text).toContain("*b:*");
@@ -88,7 +94,7 @@ describe("buildPendingMessage", () => {
     const longValue = "x".repeat(200);
     const action = makeAction({ payload: { description: longValue } });
     const msg = buildPendingMessage(action, DASHBOARD);
-    const payloadSection = msg.blocks[2] as { text: { text: string } };
+    const payloadSection = narrowBlock<{ text: { text: string } }>(msg.blocks[2]);
 
     expect(payloadSection.text.text).toContain("\u2026");
     expect(payloadSection.text.text.length).toBeLessThan(250);
@@ -97,7 +103,7 @@ describe("buildPendingMessage", () => {
   it("handles empty payload gracefully", () => {
     const action = makeAction({ payload: {} });
     const msg = buildPendingMessage(action, DASHBOARD);
-    const payloadSection = msg.blocks[2] as { text: { text: string } };
+    const payloadSection = narrowBlock<{ text: { text: string } }>(msg.blocks[2]);
 
     expect(payloadSection.text.text).toBe("_No payload_");
   });
@@ -107,7 +113,7 @@ describe("buildPendingMessage", () => {
       payload: { count: 42, active: true, tags: ["a", "b"] },
     });
     const msg = buildPendingMessage(action, DASHBOARD);
-    const payloadSection = msg.blocks[2] as { text: { text: string } };
+    const payloadSection = narrowBlock<{ text: { text: string } }>(msg.blocks[2]);
 
     expect(payloadSection.text.text).toContain("42");
     expect(payloadSection.text.text).toContain("true");
@@ -116,9 +122,9 @@ describe("buildPendingMessage", () => {
 
   it("has approve, reject, and view buttons", () => {
     const msg = buildPendingMessage(makeAction(), DASHBOARD);
-    const actionsBlock = msg.blocks[3] as {
+    const actionsBlock = narrowBlock<{
       elements: { action_id: string; value?: string; url?: string; style?: string }[];
-    };
+    }>(msg.blocks[3]);
 
     expect(actionsBlock.elements).toHaveLength(3);
     expect(actionsBlock.elements[0].action_id).toBe("approve_action");
@@ -134,9 +140,9 @@ describe("buildPendingMessage", () => {
 
   it("uses the provided dashboard URL for links", () => {
     const msg = buildPendingMessage(makeAction(), "https://agentseam.dev");
-    const actionsBlock = msg.blocks[3] as {
+    const actionsBlock = narrowBlock<{
       elements: { url?: string }[];
-    };
+    }>(msg.blocks[3]);
 
     expect(actionsBlock.elements[2].url).toContain("https://agentseam.dev");
   });
@@ -149,7 +155,7 @@ describe("buildDecisionMessage", () => {
     );
 
     expect(msg.text).toBe("Action approved by jtorrance");
-    const header = msg.blocks[0] as { text: { text: string } };
+    const header = narrowBlock<{ text: { text: string } }>(msg.blocks[0]);
     expect(header.text.text).toContain("\u2705");
     expect(header.text.text).toContain("Approved");
   });
@@ -160,7 +166,7 @@ describe("buildDecisionMessage", () => {
     );
 
     expect(msg.text).toBe("Action rejected by admin");
-    const header = msg.blocks[0] as { text: { text: string } };
+    const header = narrowBlock<{ text: { text: string } }>(msg.blocks[0]);
     expect(header.text.text).toContain("\u274c");
     expect(header.text.text).toContain("Rejected");
   });
@@ -171,7 +177,7 @@ describe("buildDecisionMessage", () => {
     );
 
     expect(msg.text).toBe("Action expired by system");
-    const header = msg.blocks[0] as { text: { text: string } };
+    const header = narrowBlock<{ text: { text: string } }>(msg.blocks[0]);
     expect(header.text.text).toContain("\u23f0");
     expect(header.text.text).toContain("Expired");
   });
@@ -180,7 +186,7 @@ describe("buildDecisionMessage", () => {
     const msg = buildDecisionMessage(
       "db_write", "data-agent", "approved", "user1", DASHBOARD, "id-1",
     );
-    const section = msg.blocks[1] as { fields: { text: string }[] };
+    const section = narrowBlock<{ fields: { text: string }[] }>(msg.blocks[1]);
 
     expect(section.fields[0].text).toContain("db_write");
     expect(section.fields[1].text).toContain("data-agent");
@@ -190,7 +196,7 @@ describe("buildDecisionMessage", () => {
     const msg = buildDecisionMessage(
       "send_email", "agent", "approved", "jtorrance", DASHBOARD, "id-1",
     );
-    const section = msg.blocks[2] as { text: { text: string } };
+    const section = narrowBlock<{ text: { text: string } }>(msg.blocks[2]);
 
     expect(section.text.text).toContain("jtorrance");
   });
@@ -200,9 +206,9 @@ describe("buildDecisionMessage", () => {
       "send_email", "agent", "rejected", "admin",
       "https://prod.example.com", "uuid-123",
     );
-    const actionsBlock = msg.blocks[3] as {
+    const actionsBlock = narrowBlock<{
       elements: { url: string; action_id: string }[];
-    };
+    }>(msg.blocks[3]);
 
     expect(actionsBlock.elements).toHaveLength(1);
     expect(actionsBlock.elements[0].url).toBe(
@@ -214,9 +220,9 @@ describe("buildDecisionMessage", () => {
     const msg = buildDecisionMessage(
       "send_email", "agent", "approved", "admin", DASHBOARD, "id-1",
     );
-    const actionsBlock = msg.blocks[3] as {
+    const actionsBlock = narrowBlock<{
       elements: { action_id: string }[];
-    };
+    }>(msg.blocks[3]);
 
     const actionIds = actionsBlock.elements.map((e) => e.action_id);
     expect(actionIds).not.toContain("approve_action");
@@ -234,7 +240,7 @@ describe("buildTestMessage", () => {
 
   it("includes dashboard link", () => {
     const msg = buildTestMessage("https://app.example.com");
-    const section = msg.blocks[0] as { text: { text: string } };
+    const section = narrowBlock<{ text: { text: string } }>(msg.blocks[0]);
 
     expect(section.text.text).toContain("https://app.example.com/app/inbox");
   });

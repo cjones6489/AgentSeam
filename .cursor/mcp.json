@@ -10,6 +10,17 @@
       "shadcn": {
         "command": "npx",
         "args": ["shadcn@latest", "mcp"]
+      },
+      "upstash": {
+        "command": "npx",
+        "args": [
+          "-y",
+          "@upstash/mcp-server@latest",
+          "--email",
+          "cjones6489@gmail.com",
+          "--api-key",
+          "25f8ed3d-751b-4334-a058-a5f2dd362dcc"
+        ]
       }
     }
   }

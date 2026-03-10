@@ -11,9 +11,11 @@ export async function POST() {
     try {
       await sendSlackTestNotification(userId);
     } catch (slackErr) {
-      const message =
-        slackErr instanceof Error ? slackErr.message : "Failed to send test notification.";
-      return NextResponse.json({ error: message }, { status: 400 });
+      console.error("[AgentSeam] Slack test notification failed:", slackErr);
+      return NextResponse.json(
+        { error: "Failed to send test notification." },
+        { status: 400 },
+      );
     }
 
     return NextResponse.json({ success: true });

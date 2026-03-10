@@ -31,7 +31,7 @@ describe("POST /api/slack/test", () => {
     expect(mockedSendTest).toHaveBeenCalledWith("user-123");
   });
 
-  it("returns 400 with specific message when no config exists", async () => {
+  it("returns 400 with generic message when no config exists", async () => {
     mockedSession.mockResolvedValue("user-123");
     mockedSendTest.mockRejectedValue(new Error("No Slack configuration found."));
 
@@ -39,10 +39,10 @@ describe("POST /api/slack/test", () => {
     const json = await res.json();
 
     expect(res.status).toBe(400);
-    expect(json.error).toBe("No Slack configuration found.");
+    expect(json.error).toBe("Failed to send test notification.");
   });
 
-  it("returns 400 with webhook error details", async () => {
+  it("returns 400 with generic message on webhook error", async () => {
     mockedSession.mockResolvedValue("user-123");
     mockedSendTest.mockRejectedValue(
       new Error("Slack webhook error 403: invalid_payload"),
@@ -52,7 +52,7 @@ describe("POST /api/slack/test", () => {
     const json = await res.json();
 
     expect(res.status).toBe(400);
-    expect(json.error).toContain("Slack webhook error 403");
+    expect(json.error).toBe("Failed to send test notification.");
   });
 
   it("returns 400 with fallback message for non-Error throws", async () => {

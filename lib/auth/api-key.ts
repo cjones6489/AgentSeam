@@ -39,6 +39,7 @@ function constantTimeCompare(a: string, b: string): boolean {
 }
 
 function getEnvFallbackKey(): string | undefined {
+  if (process.env.NODE_ENV !== "development") return undefined;
   return process.env.AGENTSEAM_API_KEY;
 }
 

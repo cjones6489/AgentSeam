@@ -2,7 +2,14 @@ import nextConfig from "eslint-config-next";
 import tseslint from "typescript-eslint";
 
 const eslintConfig = [
-  { ignores: ["packages/sdk/dist/**", "packages/mcp-server/dist/**", "packages/mcp-proxy/dist/**"] },
+  { ignores: [
+    "packages/sdk/dist/**",
+    "packages/mcp-server/dist/**",
+    "packages/mcp-proxy/dist/**",
+    "packages/cost-engine/dist/**",
+    "packages/shared/dist/**",
+    "apps/**",
+  ] },
   ...nextConfig,
   ...tseslint.configs.recommended,
   {

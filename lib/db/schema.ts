@@ -1,6 +1,8 @@
 import {
+  bigint,
   boolean,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -67,3 +69,44 @@ export const slackConfigs = pgTable("slack_configs", {
 });
 
 export type SlackConfigRow = typeof slackConfigs.$inferSelect;
+
+export const budgets = pgTable("budgets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  maxBudgetMicrodollars: bigint("max_budget_microdollars", { mode: "number" }).notNull(),
+  spendMicrodollars: bigint("spend_microdollars", { mode: "number" }).notNull().default(0),
+  policy: text("policy").notNull().default("strict_block"),
+  resetInterval: text("reset_interval"),
+  currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("budgets_entity_type_entity_id_idx").on(table.entityType, table.entityId),
+]);
+
+export type BudgetRow = typeof budgets.$inferSelect;
+export type NewBudgetRow = typeof budgets.$inferInsert;
+
+export const costEvents = pgTable("cost_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  requestId: text("request_id").notNull(),
+  apiKeyId: uuid("api_key_id"),
+  userId: text("user_id"),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  inputTokens: integer("input_tokens").notNull(),
+  outputTokens: integer("output_tokens").notNull(),
+  cachedInputTokens: integer("cached_input_tokens").notNull().default(0),
+  reasoningTokens: integer("reasoning_tokens").notNull().default(0),
+  costMicrodollars: bigint("cost_microdollars", { mode: "number" }).notNull(),
+  durationMs: integer("duration_ms"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("cost_events_request_id_idx").on(table.requestId),
+  index("cost_events_user_id_created_at_idx").on(table.userId, table.createdAt),
+  index("cost_events_api_key_id_created_at_idx").on(table.apiKeyId, table.createdAt),
+]);
+
+export type CostEventRow = typeof costEvents.$inferSelect;
+export type NewCostEventRow = typeof costEvents.$inferInsert;

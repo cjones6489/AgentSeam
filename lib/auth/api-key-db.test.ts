@@ -65,6 +65,7 @@ describe("DB-backed API key auth", () => {
   });
 
   it("falls back to the env key only when no managed key matches", async () => {
+    setNodeEnv("development");
     process.env.AGENTSEAM_API_KEY = "env-secret";
 
     const selectChain = {
