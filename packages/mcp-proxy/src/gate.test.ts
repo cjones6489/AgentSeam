@@ -6,7 +6,8 @@ import type { GateResult } from "./gate.js";
 let mockCreateAction = vi.fn();
 let mockGetAction = vi.fn();
 
-vi.mock("@agentseam/sdk", () => {
+vi.mock("@agentseam/sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@agentseam/sdk")>();
   class MockAgentSeam {
     constructor() {}
     createAction(...args: unknown[]) {
@@ -19,15 +20,9 @@ vi.mock("@agentseam/sdk", () => {
       return Promise.resolve({ id: "act-1", status: "executed" });
     }
   }
-  class MockTimeoutError extends Error {
-    constructor(actionId: string, timeoutMs: number) {
-      super(`Timed out on ${actionId} after ${timeoutMs}ms`);
-      this.name = "TimeoutError";
-    }
-  }
   return {
+    ...actual,
     AgentSeam: MockAgentSeam,
-    TimeoutError: MockTimeoutError,
   };
 });
 
@@ -229,6 +224,6 @@ describe("gateToolCall", () => {
 
     await expect(
       gateToolCall(sdk, "tool", {}, config, controller.signal),
-    ).rejects.toThrow("Proxy shutting down");
+    ).rejects.toThrow("Aborted");
   });
 });

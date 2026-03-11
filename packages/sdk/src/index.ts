@@ -1,5 +1,6 @@
 export { AgentSeam } from "./client.js";
 export { AgentSeamError, TimeoutError, RejectedError } from "./errors.js";
+export { waitWithAbort, interruptibleSleep } from "./polling.js";
 export type {
   ActionStatus,
   ActionType,

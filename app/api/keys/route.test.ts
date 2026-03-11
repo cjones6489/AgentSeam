@@ -8,18 +8,25 @@ vi.mock("@/lib/auth/session", () => ({
   resolveSessionUserId: vi.fn(),
 }));
 
-const mockSelect = vi.fn();
+const mockSelectList = vi.fn();
+const mockSelectCount = vi.fn().mockResolvedValue([{ value: 0 }]);
 const mockInsertReturning = vi.fn();
 
 vi.mock("@/lib/db/client", () => ({
   getDb: vi.fn(() => ({
     select: () => ({
       from: () => ({
-        where: () => ({
-          orderBy: () => ({
-            limit: mockSelect,
-          }),
-        }),
+        where: () => {
+          // Must be both thenable (for POST count query) and chainable (for GET list query)
+          const countPromise = mockSelectCount();
+          return {
+            then: countPromise.then.bind(countPromise),
+            catch: countPromise.catch.bind(countPromise),
+            orderBy: () => ({
+              limit: mockSelectList,
+            }),
+          };
+        },
       }),
     }),
     insert: () => ({
@@ -53,7 +60,7 @@ describe("GET /api/keys", () => {
 
   it("returns keys for authenticated user with cursor=null when no more pages", async () => {
     mockedResolveSessionUserId.mockResolvedValue("user-1");
-    mockSelect.mockResolvedValue([
+    mockSelectList.mockResolvedValue([
       {
         id: "00000000-0000-4000-a000-000000000011",
         name: "My Key",
@@ -91,6 +98,7 @@ describe("POST /api/keys", () => {
 
   it("creates a new API key and returns prefix + raw key", async () => {
     mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockSelectCount.mockResolvedValue([{ value: 0 }]);
     mockedGenerateRawKey.mockReturnValue("as_live_full_raw_key");
     mockedHashKey.mockReturnValue("hashed_key");
     mockedExtractPrefix.mockReturnValue("as_live_ful");
@@ -115,6 +123,23 @@ describe("POST /api/keys", () => {
     const body = await res.json();
     expect(body.rawKey).toBe("as_live_full_raw_key");
     expect(body.name).toBe("Production Key");
+  });
+
+  it("returns 409 when max keys per user reached", async () => {
+    mockedResolveSessionUserId.mockResolvedValue("user-1");
+    mockSelectCount.mockResolvedValue([{ value: 20 }]);
+
+    const req = new Request("http://localhost/api/keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "One Too Many" }),
+    });
+
+    const res = await POST(req);
+
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toContain("20");
   });
 
   it("returns 400 for missing name", async () => {

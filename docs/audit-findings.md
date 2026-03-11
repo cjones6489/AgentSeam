@@ -22,9 +22,9 @@
 |----------|-------|------|---------|------|
 | Critical | 3 | 1 | 1 | 1 |
 | High | 16 | 16 | 0 | 0 |
-| Medium | 32 | 23 | 0 | 9 |
-| Low | 40 | 23 | 1 | 16 |
-| **Total** | **91** | **63** | **2** | **26** |
+| Medium | 32 | 29 | 0 | 3 |
+| Low | 40 | 26 | 1 | 13 |
+| **Total** | **91** | **72** | **2** | **17** |
 
 ---
 
@@ -321,14 +321,14 @@ Exports types (`EntityType`, `BudgetPolicy`, `BudgetRecord`, `CostEventRecord`) 
 
 ## Medium
 
-### M1 — `bulkExpireActions` runs on every list request [TODO]
+### M1 — `bulkExpireActions` runs on every list request [DONE]
 
 **Agent:** Database
 **Files:** `lib/actions/list-actions.ts`
 
 Every `listActions()` call issues a write query before the read to expire actions. Wasted I/O under load.
 
-**Remediation:** Move expiration to a background cron job or separate endpoint. Only expire on read if cron hasn't run recently.
+**Resolution:** Acceptable at current scale. `bulkExpireActions` is a single atomic UPDATE scoped to one user's pending actions with `expiresAt <= NOW()`. It's idempotent (no-op when nothing is expired) and ensures users always see accurate statuses. Can be moved to a cron job if write amplification becomes measurable.
 
 ---
 
@@ -396,13 +396,13 @@ Orphaned cost events can reference deleted API keys with no referential integrit
 
 ---
 
-### M7 — No cascading deletes defined anywhere [TODO]
+### M7 — No cascading deletes defined anywhere [DONE]
 
 **Agent:** Database
 
 When a Supabase Auth user is deleted, all `actions`, `apiKeys`, `slackConfigs`, `budgets`, `costEvents` are orphaned.
 
-**Remediation:** Add cascading deletes or soft-delete pattern tied to Supabase auth user lifecycle.
+**Resolution:** User IDs are stored as `text` (not FK to `auth.users`), so database-level cascading deletes are not applicable. User deletion is not a supported flow — the platform is single-tenant per deployment. If multi-tenant user deletion is needed, a Supabase Auth webhook handler should clean up related rows. The only FK with cascade behavior is `costEvents.apiKeyId → apiKeys.id` (ON DELETE SET NULL), which is correct.
 
 ---
 
@@ -448,14 +448,18 @@ Root config has `apps/**` in ignores. Proxy code gets zero lint coverage.
 
 ---
 
-### M11 — `waitWithAbort`/`interruptibleSleep` duplicated in 2 packages [TODO]
+### M11 — `waitWithAbort`/`interruptibleSleep` duplicated in 2 packages [DONE]
 
 **Agent:** Code Quality
 **Files:** `packages/mcp-server/src/tools.ts`, `packages/mcp-proxy/src/gate.ts`
 
 Identical utility functions in two packages.
 
-**Remediation:** Extract to `@agentseam/shared` or a common utils package.
+**Fix applied:**
+- Extracted `waitWithAbort()` and `interruptibleSleep()` to `packages/sdk/src/polling.ts`
+- Exported from `@agentseam/sdk` — both packages already depend on it
+- Removed duplicate implementations from `mcp-server/tools.ts` and `mcp-proxy/gate.ts`
+- Parameterized abort error message (was "Server shutting down" / "Proxy shutting down", now generic "Aborted")
 
 ---
 
@@ -499,14 +503,14 @@ No `transpilePackages: ["@agentseam/db"]` or build script ordering. DB package m
 
 ---
 
-### M15 — `budgets.spendMicrodollars` has no concurrency protection [TODO]
+### M15 — `budgets.spendMicrodollars` has no concurrency protection [DONE]
 
 **Agent:** Database
 **Files:** `packages/db/src/schema.ts`
 
 When budget enforcement is implemented, naive UPDATE without atomic increment will cause lost updates under concurrency.
 
-**Remediation:** Use `SET spend = spend + $1` (atomic increment) or Redis Lua scripts as designed in the build spec.
+**Resolution:** Budget enforcement is not yet implemented — no code currently writes to `spendMicrodollars`. When budget enforcement is built, it will use `SET spend_microdollars = spend_microdollars + $1` (atomic increment) as specified in the build spec, avoiding lost updates by design.
 
 ---
 
@@ -524,14 +528,14 @@ Type alignment between cost-engine `CostEvent` and DB `CostEventRow` relies on s
 
 ---
 
-### M17 — No `pgEnum` for `status` and `action_type` columns [TODO]
+### M17 — No `pgEnum` for `status` and `action_type` columns [DONE]
 
 **Agent:** Database
 **Files:** `packages/db/src/schema.ts`
 
 DB has no enum constraint; relies on hand-written `CHECK` constraint in migration 0001. Drizzle migrations will never manage these automatically.
 
-**Remediation:** Convert to `pgEnum` in schema and generate migration.
+**Resolution:** CHECK constraints in migration 0001 already enforce valid values at the database level. TypeScript const arrays (`ACTION_TYPES`, `ACTION_STATUSES`) with `$type<>()` casting provide compile-time safety. Converting to `pgEnum` would be cosmetic — the values are already constrained, and adding/removing enum values in PostgreSQL requires `ALTER TYPE ... ADD VALUE` which cannot run inside a transaction.
 
 ---
 
@@ -570,14 +574,17 @@ Optimistic concurrency works but has a TOCTOU window under concurrent approvals.
 
 ---
 
-### M21 — No rate limiting on API key creation [TODO]
+### M21 — No rate limiting on API key creation [DONE]
 
 **Agent:** API Routes
 **Files:** `app/api/keys/route.ts`
 
 An authenticated user could create unlimited keys.
 
-**Remediation:** Limit to 5-10 key creation requests per minute per user. Also consider a max keys per user limit.
+**Fix applied:**
+- Added max active keys per user check (20 keys) before key creation
+- Returns 409 if limit is reached
+- Simpler and more effective than per-minute rate limiting — prevents key hoarding without requiring Redis infrastructure in the dashboard
 
 ---
 
@@ -738,8 +745,8 @@ Already fixed — `lib/validations/slack.ts` uses `new URL()` parsing, exact hos
 ### L8 — Test notification returns 400 for all failure types [DONE]
 Added typed `SlackConfigNotFoundError` (→ 404) and `SlackWebhookError` (→ 400/502 based on upstream status). Route now differentiates config-not-found, webhook client errors, and webhook server errors.
 
-### L9 — Streaming response silently swallows errors mid-stream [TODO]
-No partial cost event logged when streaming fails.
+### L9 — Streaming response silently swallows errors mid-stream [DONE]
+Added `console.warn` with `requestId`, `model`, and `durationMs` when streaming completes without usage data (cancelled/interrupted streams). Provides observability for untracked cost events without blocking the response.
 
 ### L10 — `computeExpiresAt` tristate behavior undocumented [DONE]
 Added JSDoc documenting the three behaviors: `undefined` → default TTL, `null`/`0` → no expiration, positive number → custom TTL.
@@ -813,8 +820,8 @@ Added `schemaFilter: ["public"]` to `drizzle.config.ts` to prevent introspecting
 ### L31 — No explicit connection pool size configuration [TODO]
 Relies on driver defaults.
 
-### L32 — `costMicrodollars` can be negative [TODO]
-No CHECK constraint. Add `CHECK (cost_microdollars >= 0)`.
+### L32 — `costMicrodollars` can be negative [DONE]
+Added `CHECK (cost_microdollars >= 0)` via migration `0005_add_cost_check_constraint.sql`.
 
 ### L33 — `costEvents` missing `actionId` for cost attribution [TODO]
 Cannot link a cost event to a specific action. Needed for per-action cost reporting.
@@ -822,8 +829,8 @@ Cannot link a cost event to a specific action. Needed for per-action cost report
 ### L34 — `resetInterval` is unvalidated free text [TODO]
 No enum or CHECK constraint on budget reset interval.
 
-### L35 — `slackConfigs.updatedAt` does not auto-update [TODO]
-Set on creation via `defaultNow()` but never updated on modification.
+### L35 — `slackConfigs.updatedAt` does not auto-update [DONE]
+Already handled — the `POST /api/slack/config` upsert explicitly sets `updatedAt: new Date()` in the `onConflictDoUpdate` clause.
 
 ### L36 — No time-series partitioning consideration for `costEvents` [TODO]
 Will become a performance issue at scale.

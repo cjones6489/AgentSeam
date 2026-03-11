@@ -110,7 +110,14 @@ function handleStreaming(
       try {
         const durationMs = Math.round(performance.now() - startTime);
 
-        if (!result?.usage) return;
+        if (!result?.usage) {
+          console.warn(
+            "[openai-route] Streaming response completed without usage data —" +
+              " cost event not recorded.",
+            { requestId, model: requestModel, durationMs },
+          );
+          return;
+        }
 
         const costEvent = calculateOpenAICost(
           requestModel,

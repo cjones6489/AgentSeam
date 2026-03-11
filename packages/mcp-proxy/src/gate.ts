@@ -1,12 +1,10 @@
-import { AgentSeam, TimeoutError } from "@agentseam/sdk";
+import { AgentSeam, TimeoutError, waitWithAbort } from "@agentseam/sdk";
 import type { ProxyConfig } from "./config.js";
 
 export interface GateResult {
   actionId: string;
   decision: "approved" | "rejected" | "timedOut";
 }
-
-const POLL_INTERVAL_MS = 3_000;
 
 const PROXY_METADATA = {
   sourceFramework: "mcp-proxy",
@@ -59,52 +57,4 @@ export async function gateToolCall(
     }
     throw err;
   }
-}
-
-async function waitWithAbort(
-  sdk: AgentSeam,
-  actionId: string,
-  timeoutMs: number,
-  signal: AbortSignal,
-): Promise<{ status: string }> {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    if (signal.aborted) {
-      throw new Error("Proxy shutting down");
-    }
-
-    const action = await sdk.getAction(actionId);
-    if (action.status !== "pending") {
-      return action;
-    }
-
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) break;
-
-    await interruptibleSleep(Math.min(POLL_INTERVAL_MS, remaining), signal);
-  }
-
-  throw new TimeoutError(actionId, timeoutMs);
-}
-
-function interruptibleSleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal.aborted) {
-      resolve();
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-
-    function onAbort() {
-      clearTimeout(timer);
-      resolve();
-    }
-
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
 }

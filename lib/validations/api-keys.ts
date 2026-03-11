@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const MAX_KEYS_PER_USER = 20;
+
 export const keyIdParamsSchema = z.object({
   id: z.string().uuid(),
 });

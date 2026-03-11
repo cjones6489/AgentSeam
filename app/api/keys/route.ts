@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, isNull, desc, lt, or } from "drizzle-orm";
+import { and, count, eq, isNull, desc, lt, or } from "drizzle-orm";
 
 import {
   generateRawKey,
@@ -15,6 +15,7 @@ import {
   createApiKeyResponseSchema,
   listApiKeysQuerySchema,
   listApiKeysResponseSchema,
+  MAX_KEYS_PER_USER,
 } from "@/lib/validations/api-keys";
 
 export async function GET(request: Request) {
@@ -81,8 +82,21 @@ export async function POST(request: Request) {
     const body = await readJsonBody(request);
     const input = createApiKeyInputSchema.parse(body);
 
-    const rawKey = generateRawKey();
     const db = getDb();
+
+    const [{ value: activeKeyCount }] = await db
+      .select({ value: count() })
+      .from(apiKeys)
+      .where(and(eq(apiKeys.userId, userId), isNull(apiKeys.revokedAt)));
+
+    if (activeKeyCount >= MAX_KEYS_PER_USER) {
+      return NextResponse.json(
+        { error: `Maximum of ${MAX_KEYS_PER_USER} active API keys allowed.` },
+        { status: 409 },
+      );
+    }
+
+    const rawKey = generateRawKey();
 
     const [created] = await db
       .insert(apiKeys)

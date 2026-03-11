@@ -36,6 +36,13 @@
       "when": 1773379200001,
       "tag": "0004_cost_events_index_and_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1773465600000,
+      "tag": "0005_add_cost_check_constraint",
+      "breakpoints": true
     }
   ]
 }

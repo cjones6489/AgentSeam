@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { AgentSeam, TimeoutError } from "@agentseam/sdk";
+import { AgentSeam, TimeoutError, waitWithAbort } from "@agentseam/sdk";
 import type { ActionRecord } from "@agentseam/sdk";
 import type { McpServerConfig } from "./config.js";
 import {
@@ -10,7 +10,6 @@ import {
 } from "./output.js";
 
 const DEFAULT_TIMEOUT_SECONDS = 300;
-const POLL_INTERVAL_MS = 3_000;
 
 const MCP_METADATA = {
   sourceFramework: "mcp",
@@ -141,52 +140,4 @@ function registerCheckAction(server: McpServer, sdk: AgentSeam) {
       }
     },
   );
-}
-
-async function waitWithAbort(
-  sdk: AgentSeam,
-  actionId: string,
-  timeoutMs: number,
-  signal: AbortSignal,
-): Promise<ActionRecord> {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    if (signal.aborted) {
-      throw new Error("Server shutting down");
-    }
-
-    const action = await sdk.getAction(actionId);
-    if (action.status !== "pending") {
-      return action;
-    }
-
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) break;
-
-    await interruptibleSleep(Math.min(POLL_INTERVAL_MS, remaining), signal);
-  }
-
-  throw new TimeoutError(actionId, timeoutMs);
-}
-
-function interruptibleSleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    if (signal.aborted) {
-      resolve();
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-
-    function onAbort() {
-      clearTimeout(timer);
-      resolve();
-    }
-
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
 }

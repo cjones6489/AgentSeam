@@ -6,21 +6,16 @@ import type { McpServerConfig } from "./config.js";
 let mockCreateAction = vi.fn();
 let mockGetAction = vi.fn();
 
-vi.mock("@agentseam/sdk", () => {
+vi.mock("@agentseam/sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@agentseam/sdk")>();
   class MockAgentSeam {
     constructor() {}
     createAction(...args: unknown[]) { return mockCreateAction(...args); }
     getAction(...args: unknown[]) { return mockGetAction(...args); }
   }
-  class MockTimeoutError extends Error {
-    constructor(actionId: string, timeoutMs: number) {
-      super(`Timed out on ${actionId} after ${timeoutMs}ms`);
-      this.name = "TimeoutError";
-    }
-  }
   return {
+    ...actual,
     AgentSeam: MockAgentSeam,
-    TimeoutError: MockTimeoutError,
   };
 });
 
@@ -316,7 +311,7 @@ describe("registerTools", () => {
       });
 
       expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Server shutting down");
+      expect(result.content[0].text).toContain("Aborted");
     });
   });
 
