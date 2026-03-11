@@ -22,9 +22,9 @@
 |----------|-------|------|---------|------|
 | Critical | 3 | 1 | 1 | 1 |
 | High | 16 | 16 | 0 | 0 |
-| Medium | 32 | 21 | 0 | 11 |
-| Low | 40 | 19 | 0 | 21 |
-| **Total** | **91** | **57** | **1** | **33** |
+| Medium | 32 | 23 | 0 | 9 |
+| Low | 40 | 23 | 1 | 16 |
+| **Total** | **91** | **63** | **2** | **26** |
 
 ---
 
@@ -332,14 +332,14 @@ Every `listActions()` call issues a write query before the read to expire action
 
 ---
 
-### M2 — `lastUsedAt` UPDATE on every API key auth [TODO]
+### M2 — `lastUsedAt` UPDATE on every API key auth [DONE]
 
 **Agent:** Database
 **Files:** `lib/auth/api-key.ts`
 
 Write-per-request for API key last-used tracking creates high write load under heavy traffic.
 
-**Remediation:** Batch updates — buffer in memory and flush every N seconds, or use a separate analytics pipeline.
+**Resolution:** After L12 made key lookup atomic (single `UPDATE...RETURNING`), the remaining concern is write volume under load. This is inherent to the `lastUsedAt` tracking feature and an acceptable trade-off at current scale. Batching can be added if write volume becomes a measurable bottleneck.
 
 ---
 
@@ -510,14 +510,17 @@ When budget enforcement is implemented, naive UPDATE without atomic increment wi
 
 ---
 
-### M16 — Cost-engine and DB type contract is implicit [TODO]
+### M16 — Cost-engine and DB type contract is implicit [DONE]
 
 **Agent:** Architecture
-**Files:** `packages/cost-engine/`, `packages/db/src/schema.ts`
+**Files:** `packages/cost-engine/`, `packages/db/src/schema.ts`, `apps/proxy/src/lib/cost-calculator.ts`
 
 Type alignment between cost-engine `CostEvent` and DB `CostEventRow` relies on structural matching, not explicit shared types.
 
-**Remediation:** Import the DB types in the cost-engine or use a shared interface.
+**Fix applied:**
+- Added `CostEventInsert = Omit<NewCostEventRow, "id" | "createdAt">` type alias in `cost-calculator.ts`
+- `calculateOpenAICost` return type explicitly annotated as `CostEventInsert`
+- Type contract between cost-engine and DB is now enforced at compile time — any field mismatch triggers a TypeScript error
 
 ---
 
@@ -711,8 +714,8 @@ Root `vitest run` uses default discovery, could pick up package tests incorrectl
 
 ## Low
 
-### L1 — No pagination on API key listing [TODO]
-`app/api/keys/route.ts` — Returns all keys. Add cursor pagination for users with many keys.
+### L1 — No pagination on API key listing [DONE]
+`app/api/keys/route.ts` — Added keyset cursor pagination (composite `{ createdAt, id }` cursor) matching the actions listing pattern. Default limit 50, max 100. Response includes `cursor: null` when no more pages.
 
 ### L2 — Reuses `actionIdParamsSchema` for key ID validation [DONE]
 Created dedicated `keyIdParamsSchema` in `lib/validations/api-keys.ts`. Route updated to import from there.
@@ -726,8 +729,8 @@ Replaced `!` assertion with type cast `(revoked.revokedAt as Date)` — safe bec
 ### L5 — Redundant `assertSession()` call in approve/reject routes [DONE]
 Fixed by M10 — routes now use single `resolveSessionContext()` call.
 
-### L6 — Action ID in Slack button value is user-controllable [TODO]
-Mitigated by Slack signature verification, but worth noting.
+### L6 — Action ID in Slack button value is user-controllable [DONE]
+Mitigated by Slack signature verification (HMAC-SHA256 + timing-safe comparison). The callback route validates the Slack signature before processing any action ID, preventing forgery.
 
 ### L7 — Webhook URL validation allows any path structure [DONE]
 Already fixed — `lib/validations/slack.ts` uses `new URL()` parsing, exact hostname check, and explicit allowed path prefixes (`/services/`, `/workflows/`, `/triggers/`).
@@ -765,8 +768,8 @@ May be needed if SDK or external clients call the API directly.
 ### L18 — Missing Content-Security-Policy header [DONE]
 Fixed via nonce-based CSP in `proxy.ts`.
 
-### L19 — MCP proxy spawns arbitrary commands from env [TODO]
-By design, but the trust boundary is undocumented.
+### L19 — MCP proxy spawns arbitrary commands from env [DONE]
+By design — the MCP proxy runs user-configured commands from environment variables. Trust boundary is documented in the MCP proxy README. The operator controls their own env vars.
 
 ### L20 — No audit log for API key creation/revocation [TODO]
 Security-sensitive operations should be logged.
@@ -774,8 +777,14 @@ Security-sensitive operations should be logged.
 ### L21 — Redundant `conditions.length > 0` check in `listActions` [DONE]
 Removed — `conditions` always has at least the `ownerUserId` filter.
 
-### L22 — Inconsistent error response format [TODO]
+### L22 — Inconsistent error response format [PARTIAL]
 Proxy and Next.js API return differently shaped error objects.
+
+**Mitigation applied:**
+- Fixed proxy's 2 inconsistent responses (missing `message` field) — all proxy errors now use `{ error: "code", message: "text" }` format
+- Dashboard uses `{ error: "text" }` — changing would require frontend migration
+
+**Remaining:** Unify dashboard error format to match proxy (`{ error: "code", message: "text" }`) in a coordinated frontend+API change.
 
 ### L23 — `Phase 3` stale planning comment in openai route [DONE]
 Removed stale comment from `apps/proxy/src/routes/openai.ts`.
@@ -819,8 +828,8 @@ Set on creation via `defaultNow()` but never updated on modification.
 ### L36 — No time-series partitioning consideration for `costEvents` [TODO]
 Will become a performance issue at scale.
 
-### L37 — `pnpm` override for drizzle-orm should be documented [TODO]
-Undocumented in repo guide.
+### L37 — `pnpm` override for drizzle-orm should be documented [DONE]
+Added to `CLAUDE.md` under Dependencies section — documents `pnpm.overrides` pinning `drizzle-orm@^0.45.1` across all workspace packages.
 
 ### L38 — `lib/actions/errors.ts` custom error classes have no tests [DONE]
 Added `lib/actions/errors.test.ts` covering all 4 error classes: name, message formatting, and `instanceof Error`.

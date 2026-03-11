@@ -16,7 +16,9 @@ vi.mock("@/lib/db/client", () => ({
     select: () => ({
       from: () => ({
         where: () => ({
-          orderBy: mockSelect,
+          orderBy: () => ({
+            limit: mockSelect,
+          }),
         }),
       }),
     }),
@@ -49,7 +51,7 @@ describe("GET /api/keys", () => {
     vi.resetAllMocks();
   });
 
-  it("returns keys for authenticated user", async () => {
+  it("returns keys for authenticated user with cursor=null when no more pages", async () => {
     mockedResolveSessionUserId.mockResolvedValue("user-1");
     mockSelect.mockResolvedValue([
       {
@@ -61,19 +63,22 @@ describe("GET /api/keys", () => {
       },
     ]);
 
-    const res = await GET();
+    const req = new Request("http://localhost/api/keys");
+    const res = await GET(req);
 
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toHaveLength(1);
     expect(body.data[0].name).toBe("My Key");
+    expect(body.cursor).toBeNull();
   });
 
   it("returns 401 when session is invalid", async () => {
     const { AuthenticationRequiredError } = await import("@/lib/auth/errors");
     mockedResolveSessionUserId.mockRejectedValue(new AuthenticationRequiredError());
 
-    const res = await GET();
+    const req = new Request("http://localhost/api/keys");
+    const res = await GET(req);
 
     expect(res.status).toBe(401);
   });

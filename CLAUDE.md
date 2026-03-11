@@ -47,6 +47,10 @@ IMPORTANT: `pnpm test` and `pnpm proxy:test` are separate — always run both wh
 - Auth: session-based (`resolveSessionUserId`) for dashboard, API key (`assertApiKeyWithIdentity`) for agents
 - Error responses: 401 = identity unknown, 403 = identity known but unauthorized
 
+## Dependencies
+
+- Root `package.json` has `pnpm.overrides` pinning `drizzle-orm@^0.45.1` across all workspace packages to prevent version mismatch issues
+
 ## Supabase
 
 - Project ref: `tycgnuukvplrvsqdgxen`

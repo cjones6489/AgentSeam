@@ -24,8 +24,19 @@ export const createApiKeyResponseSchema = z.object({
   createdAt: z.string(),
 });
 
+const apiKeyCursorSchema = z.object({
+  createdAt: z.string().datetime(),
+  id: z.string().uuid(),
+});
+
+export const listApiKeysQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: z.string().transform((s) => JSON.parse(s)).pipe(apiKeyCursorSchema).optional(),
+});
+
 export const listApiKeysResponseSchema = z.object({
   data: z.array(apiKeyRecordSchema),
+  cursor: apiKeyCursorSchema.nullable(),
 });
 
 export const deleteApiKeyResponseSchema = z.object({

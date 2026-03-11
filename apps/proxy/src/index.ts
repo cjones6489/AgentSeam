@@ -100,10 +100,10 @@ export default {
         );
       }
 
-      return Response.json({ error: "not_found" }, { status: 404 });
+      return Response.json({ error: "not_found", message: "Not found" }, { status: 404 });
     } catch (err) {
       console.error("[proxy] Unhandled error:", err);
-      return Response.json({ error: "internal_error" }, { status: 502 });
+      return Response.json({ error: "internal_error", message: "Internal server error" }, { status: 502 });
     }
   },
 };

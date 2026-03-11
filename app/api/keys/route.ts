@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, eq, isNull, desc } from "drizzle-orm";
+import { and, eq, isNull, desc, lt, or } from "drizzle-orm";
 
 import {
   generateRawKey,
@@ -13,13 +13,31 @@ import { handleRouteError, readJsonBody } from "@/lib/utils/http";
 import {
   createApiKeyInputSchema,
   createApiKeyResponseSchema,
+  listApiKeysQuerySchema,
   listApiKeysResponseSchema,
 } from "@/lib/validations/api-keys";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const userId = await resolveSessionUserId();
+    const url = new URL(request.url);
+    const query = listApiKeysQuerySchema.parse({
+      limit: url.searchParams.get("limit") ?? undefined,
+      cursor: url.searchParams.get("cursor") ?? undefined,
+    });
+
     const db = getDb();
+    const conditions = [eq(apiKeys.userId, userId), isNull(apiKeys.revokedAt)];
+
+    if (query.cursor) {
+      const cursorDate = new Date(query.cursor.createdAt);
+      conditions.push(
+        or(
+          lt(apiKeys.createdAt, cursorDate),
+          and(eq(apiKeys.createdAt, cursorDate), lt(apiKeys.id, query.cursor.id)),
+        )!,
+      );
+    }
 
     const rows = await db
       .select({
@@ -30,16 +48,28 @@ export async function GET() {
         createdAt: apiKeys.createdAt,
       })
       .from(apiKeys)
-      .where(and(eq(apiKeys.userId, userId), isNull(apiKeys.revokedAt)))
-      .orderBy(desc(apiKeys.createdAt));
+      .where(and(...conditions))
+      .orderBy(desc(apiKeys.createdAt), desc(apiKeys.id))
+      .limit(query.limit + 1);
 
-    const data = rows.map((row) => ({
+    const hasMore = rows.length > query.limit;
+    const pageRows = hasMore ? rows.slice(0, query.limit) : rows;
+    const lastRow = pageRows[pageRows.length - 1];
+
+    const data = pageRows.map((row) => ({
       ...row,
       lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
     }));
 
-    return NextResponse.json(listApiKeysResponseSchema.parse({ data }));
+    return NextResponse.json(
+      listApiKeysResponseSchema.parse({
+        data,
+        cursor: hasMore && lastRow
+          ? { createdAt: lastRow.createdAt.toISOString(), id: lastRow.id }
+          : null,
+      }),
+    );
   } catch (error) {
     return handleRouteError(error);
   }
