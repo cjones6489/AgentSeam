@@ -22,9 +22,9 @@
 |----------|-------|------|---------|------|
 | Critical | 3 | 1 | 1 | 1 |
 | High | 16 | 16 | 0 | 0 |
-| Medium | 32 | 9 | 0 | 23 |
-| Low | 40 | 0 | 0 | 40 |
-| **Total** | **91** | **26** | **1** | **64** |
+| Medium | 32 | 14 | 0 | 18 |
+| Low | 40 | 1 | 0 | 39 |
+| **Total** | **91** | **32** | **1** | **58** |
 
 ---
 
@@ -450,14 +450,16 @@ Identical utility functions in two packages.
 
 ---
 
-### M12 — Slack webhook URL returned in full [TODO]
+### M12 — Slack webhook URL returned in full [DONE]
 
 **Agent:** Security
 **Files:** `app/api/slack/config/route.ts`
 
 `GET /api/slack/config` returns the full `webhookUrl`. Webhook URLs are bearer tokens.
 
-**Remediation:** Mask the URL in responses — e.g., `https://hooks.slack.com/services/T****/B****/xxxx`.
+**Fix applied:**
+- Added `maskWebhookUrl()` helper that masks path segments: `https://hooks.slack.com/services/****/****/xxxx****`
+- Applied to both GET and POST response serialization
 
 ---
 
@@ -595,25 +597,26 @@ Non-streaming GPT-4 can take >25s. Timeout would abort and trigger failover.
 
 ---
 
-### M25 — Expiration update in approve/reject missing `ownerUserId` filter [TODO]
+### M25 — Expiration update in approve/reject missing `ownerUserId` filter [DONE]
 
 **Agent:** API Routes
 **Files:** `lib/actions/approve-action.ts`, `lib/actions/reject-action.ts`
 
 TOCTOU gap — the expiration WHERE clause doesn't include `ownerUserId`, so a race could affect the wrong user's action.
 
-**Remediation:** Add `ownerUserId` to all WHERE clauses in approve/reject flows.
+**Fix applied:**
+- Added `eq(actions.ownerUserId, ownerUserId)` to expiration update WHERE clause in both `approve-action.ts` and `reject-action.ts`
 
 ---
 
-### M26 — `markResult` does not check expiration [TODO]
+### M26 — `markResult` does not check expiration [DONE]
 
 **Agent:** API Routes
 **Files:** `lib/actions/mark-result.ts`
 
 Unlike approve/reject, `markResult` does not verify the action hasn't expired before writing the result.
 
-**Remediation:** Add expiration check consistent with approve/reject.
+**Resolution:** Not a bug — `isActionExpired()` only applies to `pending` actions. `markResult` operates on `approved`/`executing` actions which are past the expiration window. No code change needed.
 
 ---
 
@@ -628,36 +631,43 @@ Unlike approve/reject, `markResult` does not verify the action hasn't expired be
 
 ---
 
-### M28 — No payload size limits on action creation [TODO]
+### M28 — No payload size limits on action creation [DONE]
 
 **Agent:** Security
 **Files:** Zod schemas, `lib/validations/actions.ts`
 
 `payloadJson` and `metadataJson` accept arbitrary-size JSON.
 
-**Remediation:** Add Zod `z.string().max(...)` or equivalent size checks on serialized payload.
+**Fix applied:**
+- `payload`: 64KB max serialized size via `.refine()`
+- `metadata`: 16KB max serialized size via `.refine()`
+- `result`: 64KB max serialized size via `.refine()`
+- `errorMessage`: 4,000 chars max via `.max(4_000)`
+- `agentId`: 255 chars max via `.max(255)`
 
 ---
 
-### M29 — API key error returns 403 instead of 401 [TODO]
+### M29 — API key error returns 403 instead of 401 [DONE]
 
 **Agent:** Security
-**Files:** `lib/auth/api-key.ts`
+**Files:** `lib/utils/http.ts`
 
 Should return 401 for authentication failure, not 403. 403 implies the identity is known but unauthorized.
 
-**Remediation:** Return 401 for invalid/missing API key.
+**Fix applied:**
+- Changed `ApiKeyError` handler in `handleRouteError()` from `status: 403` to `status: 401`
 
 ---
 
-### M30 — Database connection string may leak in proxy logs [TODO]
+### M30 — Database connection string may leak in proxy logs [DONE]
 
 **Agent:** Security
 **Files:** `apps/proxy/src/lib/cost-logger.ts`
 
 `console.error` on DB failure may include connection string with password.
 
-**Remediation:** Sanitize error messages before logging. Never log the full error object from DB connection failures.
+**Fix applied:**
+- Changed catch block to log `err.message` only instead of full error object
 
 ---
 
@@ -726,8 +736,8 @@ Different response times for session vs. API key auth paths.
 ### L14 — `readJsonBody` does not enforce max body size [TODO]
 See H5.
 
-### L15 — ZodError issues returned verbatim to client [TODO]
-Leaks internal schema details. Sanitize Zod errors before returning.
+### L15 — ZodError issues returned verbatim to client [DONE]
+Sanitized: `handleRouteError` now maps issues to `{ path, message }` only, stripping internal Zod fields.
 
 ### L16 — No request ID propagation across the stack [TODO]
 No correlation ID between proxy, API routes, and DB queries.

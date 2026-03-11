@@ -72,7 +72,10 @@ export async function logCostEvent(
     const db = drizzle({ client });
     await db.insert(costEvents).values(event);
   } catch (err) {
-    console.error("[cost-logger] Failed to write cost event:", err);
+    console.error(
+      "[cost-logger] Failed to write cost event:",
+      err instanceof Error ? err.message : "Unknown error",
+    );
   } finally {
     if (client) {
       try {

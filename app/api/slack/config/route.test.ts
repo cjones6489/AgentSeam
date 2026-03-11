@@ -74,7 +74,7 @@ describe("GET /api/slack/config", () => {
     expect(res.status).toBe(200);
     expect(json.data).toMatchObject({
       id: storedConfig.id,
-      webhookUrl: storedConfig.webhookUrl,
+      webhookUrl: "https://hooks.slack.com/services/****/****/xxxx****",
       channelName: "#alerts",
       isActive: true,
     });
@@ -119,7 +119,7 @@ describe("POST /api/slack/config", () => {
     const json = await res.json();
 
     expect(res.status).toBe(200);
-    expect(json.data.webhookUrl).toBe("https://hooks.slack.com/services/T00/B00/xxxx");
+    expect(json.data.webhookUrl).toBe("https://hooks.slack.com/services/****/****/xxxx****");
   });
 
   it("rejects an invalid webhook URL", async () => {

@@ -49,7 +49,7 @@ export function handleRouteError(error: unknown) {
     return NextResponse.json(
       {
         error: "Request validation failed.",
-        issues: error.issues,
+        issues: error.issues.map((i) => ({ path: i.path, message: i.message })),
       },
       { status: 400 },
     );
@@ -72,7 +72,7 @@ export function handleRouteError(error: unknown) {
   }
 
   if (error instanceof ApiKeyError) {
-    return NextResponse.json({ error: error.message }, { status: 403 });
+    return NextResponse.json({ error: error.message }, { status: 401 });
   }
 
   if (error instanceof AuthenticationRequiredError) {

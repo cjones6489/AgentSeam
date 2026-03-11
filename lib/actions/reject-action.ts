@@ -41,6 +41,7 @@ export async function rejectAction(
         .where(
           and(
             eq(actions.id, actionId),
+            eq(actions.ownerUserId, ownerUserId),
             eq(actions.status, "pending"),
           ),
         );

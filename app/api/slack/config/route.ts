@@ -10,6 +10,21 @@ import {
   slackConfigRecordSchema,
 } from "@/lib/validations/slack";
 
+function maskWebhookUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const parts = parsed.pathname.split("/").filter(Boolean);
+    if (parts.length >= 4) {
+      parts[1] = "****";
+      parts[2] = "****";
+      parts[3] = parts[3].slice(0, 4) + "****";
+    }
+    return `${parsed.origin}/${parts.join("/")}`;
+  } catch {
+    return "https://hooks.slack.com/services/****";
+  }
+}
+
 export async function GET() {
   try {
     const userId = await resolveSessionUserId();
@@ -28,7 +43,7 @@ export async function GET() {
     return NextResponse.json({
       data: slackConfigRecordSchema.parse({
         id: config.id,
-        webhookUrl: config.webhookUrl,
+        webhookUrl: maskWebhookUrl(config.webhookUrl),
         channelName: config.channelName,
         slackUserId: config.slackUserId,
         isActive: config.isActive,
@@ -72,7 +87,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       data: slackConfigRecordSchema.parse({
         id: upserted.id,
-        webhookUrl: upserted.webhookUrl,
+        webhookUrl: maskWebhookUrl(upserted.webhookUrl),
         channelName: upserted.channelName,
         slackUserId: upserted.slackUserId,
         isActive: upserted.isActive,

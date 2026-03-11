@@ -13,7 +13,30 @@ const jsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
   ]),
 );
 
+const MAX_PAYLOAD_BYTES = 64_000;
+const MAX_METADATA_BYTES = 16_000;
+const MAX_RESULT_BYTES = 64_000;
+
 const jsonObjectSchema = z.record(z.string(), jsonValueSchema);
+
+const boundedPayloadSchema = jsonObjectSchema.refine(
+  (val) => JSON.stringify(val).length <= MAX_PAYLOAD_BYTES,
+  { message: `Payload must be at most ${MAX_PAYLOAD_BYTES} bytes when serialized.` },
+);
+
+const boundedMetadataSchema = jsonObjectSchema
+  .refine(
+    (val) => JSON.stringify(val).length <= MAX_METADATA_BYTES,
+    { message: `Metadata must be at most ${MAX_METADATA_BYTES} bytes when serialized.` },
+  )
+  .optional();
+
+const boundedResultSchema = jsonObjectSchema
+  .refine(
+    (val) => JSON.stringify(val).length <= MAX_RESULT_BYTES,
+    { message: `Result must be at most ${MAX_RESULT_BYTES} bytes when serialized.` },
+  )
+  .optional();
 
 export const actionTypeSchema = z.enum(ACTION_TYPES);
 export const actionStatusSchema = z.enum(ACTION_STATUSES);
@@ -21,10 +44,10 @@ export const actionStatusSchema = z.enum(ACTION_STATUSES);
 export const actionMetadataSchema = jsonObjectSchema.optional();
 
 export const createActionInputSchema = z.object({
-  agentId: z.string().trim().min(1),
+  agentId: z.string().trim().min(1).max(255),
   actionType: actionTypeSchema,
-  payload: jsonObjectSchema,
-  metadata: actionMetadataSchema,
+  payload: boundedPayloadSchema,
+  metadata: boundedMetadataSchema,
   expiresInSeconds: z.number().int().min(0).nullable().optional(),
 });
 
@@ -35,8 +58,8 @@ export const actionIdParamsSchema = z.object({
 export const markResultInputSchema = z
   .object({
     status: z.enum(["executing", "executed", "failed"]),
-    result: jsonObjectSchema.optional(),
-    errorMessage: z.string().trim().min(1).optional(),
+    result: boundedResultSchema,
+    errorMessage: z.string().trim().min(1).max(4_000).optional(),
   })
   .superRefine((value, ctx) => {
     if (value.status === "failed" && !value.errorMessage) {
