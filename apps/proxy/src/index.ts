@@ -1,7 +1,9 @@
 import { Redis } from "@upstash/redis/cloudflare";
+import { Ratelimit } from "@upstash/ratelimit";
 import { handleChatCompletions } from "./routes/openai.js";
 
 const MAX_BODY_SIZE = 1_048_576; // 1MB
+const PROXY_RATE_LIMIT = 120; // requests per minute per key
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -26,6 +28,33 @@ export default {
       }
 
       if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
+        // Rate limiting — per connecting IP via sliding window
+        const clientIp = request.headers.get("cf-connecting-ip") ?? "unknown";
+        try {
+          const ratelimit = new Ratelimit({
+            redis: Redis.fromEnv(env),
+            limiter: Ratelimit.slidingWindow(PROXY_RATE_LIMIT, "1 m"),
+            prefix: "agentseam:proxy:rl",
+          });
+          const { success, limit, remaining, reset } = await ratelimit.limit(clientIp);
+          if (!success) {
+            return Response.json(
+              { error: "rate_limited", message: "Too many requests" },
+              {
+                status: 429,
+                headers: {
+                  "X-RateLimit-Limit": String(limit),
+                  "X-RateLimit-Remaining": String(remaining),
+                  "X-RateLimit-Reset": String(reset),
+                  "Retry-After": String(Math.ceil((reset - Date.now()) / 1000)),
+                },
+              },
+            );
+          }
+        } catch (err) {
+          // Rate limiter failure should not block requests — log and continue
+          console.error("[proxy] Rate limiter error:", err);
+        }
         // Body size check — reject before reading into memory
         const contentLength = request.headers.get("content-length");
         if (contentLength && parseInt(contentLength, 10) > MAX_BODY_SIZE) {

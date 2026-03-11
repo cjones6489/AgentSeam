@@ -4,6 +4,7 @@ import { buildUpstreamHeaders, buildClientHeaders } from "../lib/headers.js";
 import { ensureStreamOptions, extractModelFromBody } from "../lib/request-utils.js";
 import { createSSEParser } from "../lib/sse-parser.js";
 import { calculateOpenAICost } from "../lib/cost-calculator.js";
+import { isKnownModel } from "@agentseam/cost-engine";
 import { logCostEvent } from "../lib/cost-logger.js";
 import { OPENAI_BASE_URL } from "../lib/constants.js";
 
@@ -21,6 +22,18 @@ export async function handleChatCompletions(
   if (!isAuthed) return unauthorizedResponse();
 
   const requestModel = extractModelFromBody(body);
+  const attribution = {
+    userId: request.headers.get("x-agentseam-user-id"),
+    apiKeyId: request.headers.get("x-agentseam-key-id"),
+  };
+
+  if (!isKnownModel("openai", requestModel)) {
+    return Response.json(
+      { error: "invalid_model", message: `Model "${requestModel}" is not in the allowed model list` },
+      { status: 400 },
+    );
+  }
+
   const isStreaming = body.stream === true;
 
   if (isStreaming) {
@@ -30,8 +43,9 @@ export async function handleChatCompletions(
   const upstreamHeaders = buildUpstreamHeaders(request);
   const startTime = performance.now();
 
-  // Fail before the Worker's 30s CPU limit to allow graceful fallback
-  const UPSTREAM_TIMEOUT_MS = 25_000;
+  // Workers have no CPU time limit on streaming responses (wall-clock is fine).
+  // Non-streaming GPT-4 class models can take >25s; 120s gives them room.
+  const UPSTREAM_TIMEOUT_MS = 120_000;
 
   const upstreamResponse = await fetch(`${OPENAI_BASE_URL}/v1/chat/completions`, {
     method: "POST",
@@ -60,6 +74,7 @@ export async function handleChatCompletions(
       requestId,
       startTime,
       env,
+      attribution,
     );
   }
 
@@ -70,8 +85,11 @@ export async function handleChatCompletions(
     requestId,
     startTime,
     env,
+    attribution,
   );
 }
+
+type Attribution = { userId: string | null; apiKeyId: string | null };
 
 function handleStreaming(
   upstreamResponse: Response,
@@ -80,6 +98,7 @@ function handleStreaming(
   requestId: string,
   startTime: number,
   env: Env,
+  attribution: Attribution,
 ): Response {
   const upstreamBody = upstreamResponse.body;
   if (!upstreamBody) {
@@ -101,6 +120,7 @@ function handleStreaming(
           result.usage,
           requestId,
           durationMs,
+          attribution,
         );
 
         await logCostEvent(env.HYPERDRIVE.connectionString, costEvent);
@@ -127,6 +147,7 @@ async function handleNonStreaming(
   requestId: string,
   startTime: number,
   env: Env,
+  attribution: Attribution,
 ): Promise<Response> {
   const responseText = await upstreamResponse.text();
   const durationMs = Math.round(performance.now() - startTime);
@@ -143,6 +164,7 @@ async function handleNonStreaming(
         usage,
         requestId,
         durationMs,
+        attribution,
       );
 
       waitUntil(logCostEvent(env.HYPERDRIVE.connectionString, costEvent));

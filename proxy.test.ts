@@ -7,6 +7,20 @@ vi.mock("@/lib/auth/supabase", () => ({
   })),
 }));
 
+// Mock rate limiting — default to allowing all requests
+const { mockLimit, MockRatelimit } = vi.hoisted(() => {
+  const mockLimit = vi.fn().mockResolvedValue({ success: true, limit: 100, remaining: 99, reset: Date.now() + 60000 });
+  const MockRatelimit = vi.fn().mockImplementation(function () { return { limit: mockLimit }; });
+  (MockRatelimit as any).slidingWindow = vi.fn();
+  return { mockLimit, MockRatelimit };
+});
+vi.mock("@upstash/ratelimit", () => ({
+  Ratelimit: MockRatelimit,
+}));
+vi.mock("@upstash/redis", () => ({
+  Redis: { fromEnv: vi.fn() },
+}));
+
 import { proxy } from "./proxy";
 
 function makeRequest(
@@ -322,6 +336,50 @@ describe("proxy()", () => {
       });
       const response = await proxy(req as any);
       expect(response.status).not.toBe(413);
+    });
+  });
+
+  describe("rate limiting", () => {
+    beforeEach(() => {
+      process.env.UPSTASH_REDIS_REST_URL = "https://fake.upstash.io";
+      process.env.UPSTASH_REDIS_REST_TOKEN = "fake-token";
+    });
+
+    it("returns 429 when rate limit is exceeded on /api/ routes", async () => {
+      mockLimit.mockResolvedValueOnce({ success: false, limit: 100, remaining: 0, reset: Date.now() + 60000 });
+
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "GET",
+        headers: new Headers({
+          cookie: "session=abc",
+          host: "example.com",
+          "x-forwarded-for": "1.2.3.4",
+        }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).toBe(429);
+      const body = await response.json();
+      expect(body.error).toBe("Too many requests");
+    });
+
+    it("skips rate limiting for non-API routes", async () => {
+      mockLimit.mockResolvedValueOnce({ success: false, limit: 100, remaining: 0, reset: Date.now() + 60000 });
+
+      const req = makeRequest("https://example.com/dashboard");
+      const response = await proxy(req as any);
+      expect(response.status).not.toBe(429);
+    });
+
+    it("skips rate limiting when Upstash env vars are not set", async () => {
+      delete process.env.UPSTASH_REDIS_REST_URL;
+      delete process.env.UPSTASH_REDIS_REST_TOKEN;
+
+      const req = makeRequest("https://example.com/api/actions", {
+        method: "GET",
+        headers: new Headers({ host: "example.com" }),
+      });
+      const response = await proxy(req as any);
+      expect(response.status).not.toBe(429);
     });
   });
 

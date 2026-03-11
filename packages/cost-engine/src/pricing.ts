@@ -18,6 +18,14 @@ export function getModelPricing(
 }
 
 /**
+ * Check if a model has pricing data (i.e. is in the allowlist).
+ * Unknown models have no cost tracking, so the proxy should reject them.
+ */
+export function isKnownModel(provider: string, model: string): boolean {
+  return `${provider}/${model}` in pricingMap;
+}
+
+/**
  * Compute a single cost component in **unrounded microdollars** (float).
  *
  * Dimensional analysis:

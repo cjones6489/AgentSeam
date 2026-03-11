@@ -1,10 +1,53 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
 
 import { createProxySupabaseClient } from "@/lib/auth/supabase";
 
 const MAX_BODY_BYTES = 1_048_576; // 1MB
 
+// Returns null if Upstash env vars are not configured
+function getRatelimit(): Ratelimit | null {
+  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+    return null;
+  }
+  return new Ratelimit({
+    redis: Redis.fromEnv(),
+    limiter: Ratelimit.slidingWindow(100, "1 m"),
+    prefix: "agentseam:api:rl",
+  });
+}
+
 export async function proxy(request: NextRequest) {
+  // --- Rate limiting for API routes ---
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    const limiter = getRatelimit();
+    if (limiter) {
+      const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+        ?? request.headers.get("x-real-ip")
+        ?? "127.0.0.1";
+      try {
+        const { success, limit, remaining, reset } = await limiter.limit(ip);
+        if (!success) {
+          return NextResponse.json(
+            { error: "Too many requests" },
+            {
+              status: 429,
+              headers: {
+                "X-RateLimit-Limit": String(limit),
+                "X-RateLimit-Remaining": String(remaining),
+                "X-RateLimit-Reset": String(reset),
+                "Retry-After": String(Math.ceil((reset - Date.now()) / 1000)),
+              },
+            },
+          );
+        }
+      } catch {
+        // Rate limiter failure should not block requests
+      }
+    }
+  }
+
   // --- CSRF: Origin validation for state-changing API requests ---
   if (
     request.nextUrl.pathname.startsWith("/api/") &&

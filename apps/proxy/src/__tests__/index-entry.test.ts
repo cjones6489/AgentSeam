@@ -32,6 +32,22 @@ vi.mock("@upstash/redis/cloudflare", () => ({
   },
 }));
 
+const { mockProxyLimit, MockProxyRatelimit } = vi.hoisted(() => {
+  const mockProxyLimit = vi.fn().mockResolvedValue({ success: true, limit: 120, remaining: 119, reset: Date.now() + 60000 });
+  const MockProxyRatelimit = vi.fn().mockImplementation(function () { return { limit: mockProxyLimit }; });
+  (MockProxyRatelimit as any).slidingWindow = vi.fn();
+  return { mockProxyLimit, MockProxyRatelimit };
+});
+vi.mock("@upstash/ratelimit", () => ({
+  Ratelimit: MockProxyRatelimit,
+}));
+
+vi.mock("@agentseam/cost-engine", () => ({
+  isKnownModel: vi.fn().mockReturnValue(true),
+  getModelPricing: vi.fn().mockReturnValue(null),
+  costComponent: vi.fn().mockReturnValue(0),
+}));
+
 import entrypoint from "../index.js";
 
 function makeEnv(): Env {
@@ -292,6 +308,74 @@ describe("Worker entry point routing", () => {
 
       const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
       expect(res.status).not.toBe(413);
+    });
+  });
+
+  describe("rate limiting", () => {
+    it("returns 429 when rate limit is exceeded", async () => {
+      mockProxyLimit.mockResolvedValueOnce({ success: false, limit: 120, remaining: 0, reset: Date.now() + 60000 });
+
+      const req = new Request("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "X-AgentSeam-Auth": "test-platform-key",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: [] }),
+      });
+
+      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
+      expect(res.status).toBe(429);
+      const body = await res.json();
+      expect(body.error).toBe("rate_limited");
+      expect(res.headers.get("X-RateLimit-Limit")).toBe("120");
+      expect(res.headers.get("Retry-After")).toBeTruthy();
+    });
+
+    it("continues processing when rate limit is not exceeded", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ choices: [], model: "gpt-4o-mini" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      const req = new Request("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "X-AgentSeam-Auth": "test-platform-key",
+          Authorization: "Bearer sk-test",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      });
+
+      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
+      expect(res.status).toBe(200);
+    });
+
+    it("continues processing when rate limiter throws (fail-open for availability)", async () => {
+      mockProxyLimit.mockRejectedValueOnce(new Error("Redis connection failed"));
+
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ choices: [], model: "gpt-4o-mini" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+      const req = new Request("http://localhost/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "X-AgentSeam-Auth": "test-platform-key",
+          Authorization: "Bearer sk-test",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] }),
+      });
+
+      const res = await entrypoint.fetch(req, makeEnv(), makeCtx());
+      expect(res.status).toBe(200);
     });
   });
 });

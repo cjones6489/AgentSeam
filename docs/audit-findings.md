@@ -21,10 +21,10 @@
 | Severity | Total | Done | Partial | Todo |
 |----------|-------|------|---------|------|
 | Critical | 3 | 1 | 1 | 1 |
-| High | 16 | 5 | 0 | 11 |
-| Medium | 32 | 3 | 0 | 29 |
+| High | 16 | 8 | 0 | 8 |
+| Medium | 32 | 5 | 0 | 27 |
 | Low | 40 | 0 | 0 | 40 |
-| **Total** | **91** | **9** | **1** | **81** |
+| **Total** | **91** | **14** | **1** | **76** |
 
 ---
 
@@ -81,7 +81,7 @@ No RLS policies exist in any migration or schema file. If tables are accessed wi
 
 ## High
 
-### H1 — No rate limiting on any endpoint [TODO]
+### H1 — No rate limiting on any endpoint [DONE]
 
 **Agent:** Security
 **Files:** All `app/api/` routes, `proxy.ts`
@@ -130,7 +130,7 @@ Approve/reject, key management, and Slack config routes use session cookies but 
 
 ---
 
-### H4 — Cost events lack user attribution [TODO]
+### H4 — Cost events lack user attribution [DONE]
 
 **Agent:** API Routes
 **Files:** `apps/proxy/src/lib/cost-logger.ts`
@@ -158,7 +158,7 @@ Neither the proxy nor Next.js API routes enforce body size limits. `request.text
 
 ---
 
-### H6 — No model allowlist on proxy [TODO]
+### H6 — No model allowlist on proxy [DONE]
 
 **Agent:** API Routes
 **Files:** `apps/proxy/src/routes/openai.ts`, `apps/proxy/src/lib/cost-calculator.ts`
@@ -343,7 +343,7 @@ Write-per-request for API key last-used tracking creates high write load under h
 
 ---
 
-### M3 — Proxy creates new `pg.Client` per request [TODO]
+### M3 — Proxy creates new `pg.Client` per request [DONE]
 
 **Agent:** Database
 **Files:** `apps/proxy/src/lib/cost-logger.ts`
@@ -573,7 +573,7 @@ If the Worker crashes before auth completes, the request is forwarded to origin 
 
 ---
 
-### M24 — 25-second timeout too aggressive for large completions [TODO]
+### M24 — 25-second timeout too aggressive for large completions [DONE]
 
 **Agent:** API Routes
 **Files:** `apps/proxy/src/routes/openai.ts`

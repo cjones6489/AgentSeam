@@ -31,6 +31,14 @@ vi.mock("cloudflare:workers", () => ({
   }),
 }));
 
+const { mockIsKnownModel } = vi.hoisted(() => {
+  const mockIsKnownModel = vi.fn().mockReturnValue(true);
+  return { mockIsKnownModel };
+});
+vi.mock("@agentseam/cost-engine", () => ({
+  isKnownModel: mockIsKnownModel,
+}));
+
 import { handleChatCompletions } from "../routes/openai.js";
 
 function makeRequest(
@@ -85,6 +93,18 @@ describe("handleChatCompletions", () => {
   afterEach(() => {
     globalThis.fetch = originalFetch;
     vi.restoreAllMocks();
+  });
+
+  it("returns 400 for unknown models", async () => {
+    mockIsKnownModel.mockReturnValueOnce(false);
+    const request = makeRequest({ model: "unknown-model", messages: [] });
+    const res = await handleChatCompletions(request, makeEnv(), {
+      model: "unknown-model",
+      messages: [],
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("invalid_model");
   });
 
   it("returns 401 when platform key is missing", async () => {
