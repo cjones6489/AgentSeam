@@ -15,12 +15,33 @@ vi.mock("@/lib/db/client", () => ({
 }));
 
 vi.mock("@agentseam/db", () => ({
-  actions: {
-    id: "id",
-    status: "status",
-    expiresAt: "expiresAt",
-  },
+  actions: {},
 }));
+
+function makeRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "action-1",
+    agentId: "agent-1",
+    actionType: "http_post",
+    status: "pending",
+    ownerUserId: "owner-1",
+    payloadJson: { url: "https://example.com" },
+    metadataJson: null,
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    approvedAt: null,
+    rejectedAt: null,
+    executedAt: null,
+    expiresAt: null,
+    expiredAt: null,
+    approvedBy: null,
+    rejectedBy: null,
+    resultJson: null,
+    errorMessage: null,
+    environment: null,
+    sourceFramework: null,
+    ...overrides,
+  };
+}
 
 describe("createAction", () => {
   beforeEach(() => {
@@ -29,9 +50,7 @@ describe("createAction", () => {
 
   it("creates a pending action and returns serialized result", async () => {
     const expiresAt = new Date(Date.now() + 3600_000);
-    mockInsertReturning.mockResolvedValue([
-      { id: "action-1", status: "pending", expiresAt },
-    ]);
+    mockInsertReturning.mockResolvedValue([makeRow({ expiresAt })]);
 
     const result = await createAction(
       {
@@ -45,12 +64,12 @@ describe("createAction", () => {
     expect(result.id).toBe("action-1");
     expect(result.status).toBe("pending");
     expect(result.expiresAt).toBe(expiresAt.toISOString());
+    expect(result.agentId).toBe("agent-1");
+    expect(result.actionType).toBe("http_post");
   });
 
   it("returns null expiresAt when no expiration", async () => {
-    mockInsertReturning.mockResolvedValue([
-      { id: "action-2", status: "pending", expiresAt: null },
-    ]);
+    mockInsertReturning.mockResolvedValue([makeRow()]);
 
     const result = await createAction(
       {
@@ -67,7 +86,11 @@ describe("createAction", () => {
 
   it("passes metadata through to the insert", async () => {
     mockInsertReturning.mockResolvedValue([
-      { id: "action-3", status: "pending", expiresAt: null },
+      makeRow({
+        metadataJson: { environment: "production", sourceFramework: "langchain" },
+        environment: "production",
+        sourceFramework: "langchain",
+      }),
     ]);
 
     const result = await createAction(
@@ -80,6 +103,7 @@ describe("createAction", () => {
       "owner-1",
     );
 
-    expect(result.id).toBe("action-3");
+    expect(result.id).toBe("action-1");
+    expect(result.metadata).toEqual({ environment: "production", sourceFramework: "langchain" });
   });
 });

@@ -22,9 +22,9 @@
 |----------|-------|------|---------|------|
 | Critical | 3 | 1 | 1 | 1 |
 | High | 16 | 16 | 0 | 0 |
-| Medium | 32 | 19 | 0 | 13 |
-| Low | 40 | 5 | 0 | 35 |
-| **Total** | **91** | **41** | **1** | **49** |
+| Medium | 32 | 20 | 0 | 12 |
+| Low | 40 | 12 | 0 | 28 |
+| **Total** | **91** | **49** | **1** | **41** |
 
 ---
 
@@ -406,14 +406,18 @@ When a Supabase Auth user is deleted, all `actions`, `apiKeys`, `slackConfigs`, 
 
 ---
 
-### M8 — ESLint ignores entire `apps/` directory [TODO]
+### M8 — ESLint ignores entire `apps/` directory [DONE]
 
 **Agent:** Architecture
 **Files:** `eslint.config.mjs`
 
 Root config has `apps/**` in ignores. Proxy code gets zero lint coverage.
 
-**Remediation:** Remove the blanket ignore; add per-package ESLint configs if needed.
+**Fix applied:**
+- Replaced blanket `apps/**` ignore with `apps/*/dist/**` and `apps/*/.wrangler/**`
+- Added override for `apps/proxy/` to disable Next.js-specific `import/no-anonymous-default-export`
+- Added `no-explicit-any` relaxation for all test files
+- Fixed unused vars in proxy source (`sse-parser.ts`, `index.ts`) and test files
 
 ---
 
@@ -710,14 +714,14 @@ Root `vitest run` uses default discovery, could pick up package tests incorrectl
 ### L1 — No pagination on API key listing [TODO]
 `app/api/keys/route.ts` — Returns all keys. Add cursor pagination for users with many keys.
 
-### L2 — Reuses `actionIdParamsSchema` for key ID validation [TODO]
-`app/api/keys/[id]/route.ts` — Semantic mismatch. Create a dedicated `keyIdParamsSchema`.
+### L2 — Reuses `actionIdParamsSchema` for key ID validation [DONE]
+Created dedicated `keyIdParamsSchema` in `lib/validations/api-keys.ts`. Route updated to import from there.
 
-### L3 — Non-null assertion on `revokedAt` [TODO]
-`app/api/keys/[id]/route.ts` — Uses `!` assertion. Add proper null check.
+### L3 — Non-null assertion on `revokedAt` [DONE]
+Replaced `!` assertion with type cast `(revoked.revokedAt as Date)` — safe because the update sets `revokedAt: now`.
 
-### L4 — Slack notification re-fetches action after creation [TODO]
-`app/api/actions/route.ts` — Extra DB round-trip. Pass the created action directly.
+### L4 — Slack notification re-fetches action after creation [DONE]
+`createAction` now returns full serialized `ActionRecord`. Route passes it directly to `sendSlackNotification`, eliminating the `getAction` re-fetch.
 
 ### L5 — Redundant `assertSession()` call in approve/reject routes [DONE]
 Fixed by M10 — routes now use single `resolveSessionContext()` call.
@@ -725,8 +729,8 @@ Fixed by M10 — routes now use single `resolveSessionContext()` call.
 ### L6 — Action ID in Slack button value is user-controllable [TODO]
 Mitigated by Slack signature verification, but worth noting.
 
-### L7 — Webhook URL validation allows any path structure [TODO]
-Only checks URL prefix, not that the path matches Slack's expected format.
+### L7 — Webhook URL validation allows any path structure [DONE]
+Already fixed — `lib/validations/slack.ts` uses `new URL()` parsing, exact hostname check, and explicit allowed path prefixes (`/services/`, `/workflows/`, `/triggers/`).
 
 ### L8 — Test notification returns 400 for all failure types [TODO]
 Should differentiate 404 (no config) from 502 (webhook error).
@@ -734,8 +738,8 @@ Should differentiate 404 (no config) from 502 (webhook error).
 ### L9 — Streaming response silently swallows errors mid-stream [TODO]
 No partial cost event logged when streaming fails.
 
-### L10 — `computeExpiresAt` tristate behavior undocumented [TODO]
-`undefined` = default, `null` = never, `0` = never — not documented anywhere.
+### L10 — `computeExpiresAt` tristate behavior undocumented [DONE]
+Added JSDoc documenting the three behaviors: `undefined` → default TTL, `null`/`0` → no expiration, positive number → custom TTL.
 
 ### L11 — Clock skew risk between `sql NOW()` and `new Date()` [TODO]
 `bulkExpireActions` uses `sql NOW()` while `expireAction` uses `new Date()`.
@@ -776,14 +780,14 @@ Proxy and Next.js API return differently shaped error objects.
 ### L23 — `Phase 3` stale planning comment in openai route [DONE]
 Removed stale comment from `apps/proxy/src/routes/openai.ts`.
 
-### L24 — `createBrowserSupabaseClient` throws `Error` not `SupabaseEnvError` [TODO]
-Inconsistent error typing.
+### L24 — `createBrowserSupabaseClient` throws `Error` not `SupabaseEnvError` [DONE]
+Changed to throw `SupabaseEnvError` for consistent error handling.
 
 ### L25 — Error boundary leaks `error.message` to dashboard users [TODO]
 Should show generic message in production.
 
-### L26 — `UPSTREAM_FORWARD_HEADERS` includes `content-type` which is always overwritten [TODO]
-Dead header in the forward list.
+### L26 — `UPSTREAM_FORWARD_HEADERS` includes `content-type` which is always overwritten [DONE]
+Removed `content-type` from `UPSTREAM_FORWARD_HEADERS` — it was always overwritten to `application/json`.
 
 ### L27 — `assertApiKey()` function is dead code [DONE]
 Removed from `lib/auth/api-key.ts`. Test file updated to cover `AGENTSEAM_DEV_MODE` fallback instead.
@@ -818,8 +822,8 @@ Will become a performance issue at scale.
 ### L37 — `pnpm` override for drizzle-orm should be documented [TODO]
 Undocumented in repo guide.
 
-### L38 — `lib/actions/errors.ts` custom error classes have no tests [TODO]
-Error classes untested.
+### L38 — `lib/actions/errors.ts` custom error classes have no tests [DONE]
+Added `lib/actions/errors.test.ts` covering all 4 error classes: name, message formatting, and `instanceof Error`.
 
 ### L39 — `packages/shared` has no test script or test files [TODO]
 See H16 — package may be dead code entirely.

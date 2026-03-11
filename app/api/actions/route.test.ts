@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createAction } from "@/lib/actions/create-action";
-import { getAction } from "@/lib/actions/get-action";
 import { listActions } from "@/lib/actions/list-actions";
 import {
   assertApiKeyWithIdentity,
@@ -13,10 +12,6 @@ import { GET, POST } from "@/app/api/actions/route";
 
 vi.mock("@/lib/actions/create-action", () => ({
   createAction: vi.fn(),
-}));
-
-vi.mock("@/lib/actions/get-action", () => ({
-  getAction: vi.fn(),
 }));
 
 vi.mock("@/lib/actions/list-actions", () => ({
@@ -41,7 +36,6 @@ vi.mock("@/lib/slack/notify", () => ({
 }));
 
 const mockedCreateAction = vi.mocked(createAction);
-const mockedGetAction = vi.mocked(getAction);
 const mockedListActions = vi.mocked(listActions);
 const mockedAssertApiKeyWithIdentity = vi.mocked(assertApiKeyWithIdentity);
 const mockedResolveDevFallbackApiKeyUserId = vi.mocked(
@@ -49,6 +43,30 @@ const mockedResolveDevFallbackApiKeyUserId = vi.mocked(
 );
 const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
 const mockedSendSlackNotification = vi.mocked(sendSlackNotification);
+
+function makeActionRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "550e8400-e29b-41d4-a716-446655440000",
+    agentId: "agent-1",
+    actionType: "http_post",
+    status: "pending",
+    payload: { url: "https://example.com" },
+    metadata: null,
+    createdAt: "2026-03-07T12:00:00.000Z",
+    approvedAt: null,
+    rejectedAt: null,
+    executedAt: null,
+    expiresAt: "2026-03-07T13:00:00.000Z",
+    expiredAt: null,
+    approvedBy: null,
+    rejectedBy: null,
+    result: null,
+    errorMessage: null,
+    environment: null,
+    sourceFramework: null,
+    ...overrides,
+  };
+}
 
 describe("app/api/actions/route", () => {
   beforeEach(() => {
@@ -64,31 +82,7 @@ describe("app/api/actions/route", () => {
       keyId: "key-123",
       userId: "user-123",
     });
-    mockedCreateAction.mockResolvedValue({
-      id: "550e8400-e29b-41d4-a716-446655440000",
-      status: "pending",
-      expiresAt: "2026-03-07T13:00:00.000Z",
-    });
-    mockedGetAction.mockResolvedValue({
-      id: "550e8400-e29b-41d4-a716-446655440000",
-      agentId: "agent-1",
-      actionType: "http_post",
-      status: "pending",
-      payload: { url: "https://example.com" },
-      metadata: null,
-      createdAt: "2026-03-07T12:00:00.000Z",
-      approvedAt: null,
-      rejectedAt: null,
-      executedAt: null,
-      expiresAt: "2026-03-07T13:00:00.000Z",
-      expiredAt: null,
-      approvedBy: null,
-      rejectedBy: null,
-      result: null,
-      errorMessage: null,
-      environment: null,
-      sourceFramework: null,
-    });
+    mockedCreateAction.mockResolvedValue(makeActionRecord());
 
     const response = await POST(
       new Request("http://localhost/api/actions", {
@@ -110,36 +104,17 @@ describe("app/api/actions/route", () => {
       "user-123",
     );
     expect(response.status).toBe(201);
+
+    expect(mockedSendSlackNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "550e8400-e29b-41d4-a716-446655440000" }),
+      "user-123",
+    );
   });
 
   it("uses the dev actor only for env-key fallback ownership", async () => {
     mockedAssertApiKeyWithIdentity.mockResolvedValue(null);
     mockedResolveDevFallbackApiKeyUserId.mockReturnValue("dev-user");
-    mockedCreateAction.mockResolvedValue({
-      id: "550e8400-e29b-41d4-a716-446655440000",
-      status: "pending",
-      expiresAt: "2026-03-07T13:00:00.000Z",
-    });
-    mockedGetAction.mockResolvedValue({
-      id: "550e8400-e29b-41d4-a716-446655440000",
-      agentId: "agent-1",
-      actionType: "http_post",
-      status: "pending",
-      payload: { url: "https://example.com" },
-      metadata: null,
-      createdAt: "2026-03-07T12:00:00.000Z",
-      approvedAt: null,
-      rejectedAt: null,
-      executedAt: null,
-      expiresAt: "2026-03-07T13:00:00.000Z",
-      expiredAt: null,
-      approvedBy: null,
-      rejectedBy: null,
-      result: null,
-      errorMessage: null,
-      environment: null,
-      sourceFramework: null,
-    });
+    mockedCreateAction.mockResolvedValue(makeActionRecord());
 
     await POST(
       new Request("http://localhost/api/actions", {
@@ -162,17 +137,13 @@ describe("app/api/actions/route", () => {
     );
   });
 
-  it("returns 201 even when getAction throws (notification lookup failure)", async () => {
+  it("returns 201 even when Slack notification fails", async () => {
     mockedAssertApiKeyWithIdentity.mockResolvedValue({
       keyId: "key-123",
       userId: "user-123",
     });
-    mockedCreateAction.mockResolvedValue({
-      id: "550e8400-e29b-41d4-a716-446655440000",
-      status: "pending",
-      expiresAt: "2026-03-07T13:00:00.000Z",
-    });
-    mockedGetAction.mockRejectedValue(new Error("DB connection lost"));
+    mockedCreateAction.mockResolvedValue(makeActionRecord());
+    mockedSendSlackNotification.mockRejectedValue(new Error("Webhook error"));
 
     const response = await POST(
       new Request("http://localhost/api/actions", {

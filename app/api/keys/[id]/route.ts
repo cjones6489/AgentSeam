@@ -5,8 +5,7 @@ import { resolveSessionUserId } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { apiKeys } from "@agentseam/db";
 import { handleRouteError, readRouteParams } from "@/lib/utils/http";
-import { actionIdParamsSchema } from "@/lib/validations/actions";
-import { deleteApiKeyResponseSchema } from "@/lib/validations/api-keys";
+import { deleteApiKeyResponseSchema, keyIdParamsSchema } from "@/lib/validations/api-keys";
 
 export async function DELETE(
   _request: Request,
@@ -15,7 +14,7 @@ export async function DELETE(
   try {
     const userId = await resolveSessionUserId();
     const params = await readRouteParams(context.params);
-    const { id } = actionIdParamsSchema.parse(params);
+    const { id } = keyIdParamsSchema.parse(params);
 
     const db = getDb();
     const now = new Date();
@@ -42,7 +41,7 @@ export async function DELETE(
     return NextResponse.json(
       deleteApiKeyResponseSchema.parse({
         id: revoked.id,
-        revokedAt: revoked.revokedAt!.toISOString(),
+        revokedAt: (revoked.revokedAt as Date).toISOString(),
       }),
     );
   } catch (error) {

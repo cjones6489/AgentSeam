@@ -6,7 +6,7 @@ const MAX_BODY_SIZE = 1_048_576; // 1MB
 const PROXY_RATE_LIMIT = 120; // requests per minute per key
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     // No passThroughOnException() — FinOps proxy must fail closed, never forward
     // unauthenticated/untracked requests to the origin.
 

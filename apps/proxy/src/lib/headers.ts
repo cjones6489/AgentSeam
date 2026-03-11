@@ -2,7 +2,6 @@ const UPSTREAM_FORWARD_HEADERS = [
   "authorization",
   "openai-organization",
   "openai-project",
-  "content-type",
 ] as const;
 
 const UPSTREAM_STRIP_HEADERS = new Set([

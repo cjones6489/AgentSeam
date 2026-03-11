@@ -9,7 +9,8 @@ const eslintConfig = [
     "packages/cost-engine/dist/**",
     "packages/shared/dist/**",
     "packages/db/dist/**",
-    "apps/**",
+    "apps/*/dist/**",
+    "apps/*/.wrangler/**",
   ] },
   ...nextConfig,
   ...tseslint.configs.recommended,
@@ -19,6 +20,18 @@ const eslintConfig = [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+    },
+  },
+  {
+    files: ["apps/proxy/**/*.ts"],
+    rules: {
+      "import/no-anonymous-default-export": "off",
+    },
+  },
+  {
+    files: ["**/*.test.ts"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
     },
   },
 ];

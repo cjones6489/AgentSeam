@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
 import { createAction } from "@/lib/actions/create-action";
-import { getAction } from "@/lib/actions/get-action";
 import { listActions } from "@/lib/actions/list-actions";
 import {
   assertApiKeyWithIdentity,
@@ -40,20 +39,20 @@ export async function POST(request: Request) {
     const ownerUserId = identity?.userId ?? resolveDevFallbackApiKeyUserId();
     const body = await readJsonBody(request);
     const input = createActionInputSchema.parse(body);
-    const created = await createAction(input, ownerUserId);
+    const action = await createAction(input, ownerUserId);
 
-    try {
-      const fullAction = await getAction(created.id, ownerUserId);
-      sendSlackNotification(fullAction, ownerUserId).catch((err) => {
-        console.error("[AgentSeam] Slack notification failed:", err);
-      });
-    } catch (notifyErr) {
-      console.error("[AgentSeam] Slack notification lookup failed:", notifyErr);
-    }
-
-    return NextResponse.json(createActionResponseSchema.parse(created), {
-      status: 201,
+    sendSlackNotification(action, ownerUserId).catch((err) => {
+      console.error("[AgentSeam] Slack notification failed:", err);
     });
+
+    return NextResponse.json(
+      createActionResponseSchema.parse({
+        id: action.id,
+        status: action.status,
+        expiresAt: action.expiresAt,
+      }),
+      { status: 201 },
+    );
   } catch (error) {
     return handleRouteError(error);
   }

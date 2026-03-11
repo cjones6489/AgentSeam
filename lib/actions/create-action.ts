@@ -1,7 +1,8 @@
 import { computeExpiresAt } from "@/lib/actions/expiration";
+import { serializeAction } from "@/lib/actions/serialize-action";
 import { getDb } from "@/lib/db/client";
 import { actions } from "@agentseam/db";
-import type { CreateActionInput } from "@/lib/validations/actions";
+import type { CreateActionInput, ActionRecord } from "@/lib/validations/actions";
 
 function pickMetadataField(
   metadata: Record<string, unknown> | undefined,
@@ -15,11 +16,11 @@ function pickMetadataField(
 export async function createAction(
   input: CreateActionInput,
   ownerUserId: string,
-) {
+): Promise<ActionRecord> {
   const db = getDb();
   const expiresAt = computeExpiresAt(input.expiresInSeconds);
 
-  const [createdAction] = await db
+  const [row] = await db
     .insert(actions)
     .values({
       ownerUserId,
@@ -32,15 +33,7 @@ export async function createAction(
       environment: pickMetadataField(input.metadata, "environment"),
       sourceFramework: pickMetadataField(input.metadata, "sourceFramework"),
     })
-    .returning({
-      id: actions.id,
-      status: actions.status,
-      expiresAt: actions.expiresAt,
-    });
+    .returning();
 
-  return {
-    id: createdAction.id,
-    status: createdAction.status,
-    expiresAt: createdAction.expiresAt?.toISOString() ?? null,
-  };
+  return serializeAction(row);
 }

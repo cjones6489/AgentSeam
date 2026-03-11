@@ -15,6 +15,13 @@ export function isActionExpired(
   );
 }
 
+/**
+ * Compute the expiration timestamp for a new action.
+ *
+ * - `undefined` → uses {@link DEFAULT_EXPIRATION_SECONDS} (1 hour)
+ * - `null` or `0` → no expiration (returns `null`)
+ * - positive number → expires in that many seconds from now
+ */
 export function computeExpiresAt(
   expiresInSeconds: number | null | undefined,
 ): Date | null {

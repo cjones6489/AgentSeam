@@ -46,7 +46,7 @@ export function createSSEParser(upstreamBody: ReadableStream<Uint8Array>): {
       }
     },
 
-    flush(controller) {
+    flush(_controller) {
       const remaining = decoder.decode(new Uint8Array(), { stream: false });
       lineBuffer += remaining;
 

@@ -204,12 +204,12 @@ describe("SSE parser edge cases", () => {
   });
 
   it("resolves resultPromise on stream cancel() with partial data", async () => {
-    let controllerRef: ReadableStreamDefaultController<Uint8Array>;
+    let _controllerRef: ReadableStreamDefaultController<Uint8Array>;
     const encoder = new TextEncoder();
 
     const source = new ReadableStream<Uint8Array>({
       start(controller) {
-        controllerRef = controller;
+        _controllerRef = controller;
         controller.enqueue(encoder.encode(
           'data: {"model":"gpt-4o","choices":[{"index":0,"delta":{"content":"Hel"}}]}\n\n',
         ));

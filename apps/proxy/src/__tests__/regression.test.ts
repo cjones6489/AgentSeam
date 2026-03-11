@@ -54,7 +54,7 @@ describe("Tool calling SSE format", () => {
     ]);
 
     const { readable, resultPromise } = createSSEParser(stream);
-    const output = await drainStream(readable);
+    await drainStream(readable);
     const result = await resultPromise;
 
     expect(result.model).toBe("gpt-4o-mini");
