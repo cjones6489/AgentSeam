@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 
+import { CommandPalette } from "@/components/dashboard/command-palette";
+import { CommandPaletteProvider } from "@/components/dashboard/command-palette-context";
+import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { Sidebar } from "@/components/dashboard/sidebar";
-import { UserMenu } from "@/components/dashboard/user-menu";
 import { Toaster } from "@/components/ui/sonner";
 import { SupabaseEnvError } from "@/lib/auth/errors";
 import { createServerSupabaseClient } from "@/lib/auth/supabase";
@@ -44,16 +46,16 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 items-center justify-between border-b border-border/50 px-6">
-          <div />
-          <UserMenu email={email ?? process.env.AGENTSEAM_DEV_ACTOR ?? null} />
-        </header>
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+    <CommandPaletteProvider>
+      <div className="flex h-screen overflow-hidden bg-background">
+        <Sidebar />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <DashboardHeader email={email ?? process.env.AGENTSEAM_DEV_ACTOR ?? null} />
+          <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        </div>
       </div>
+      <CommandPalette />
       <Toaster theme="dark" />
-    </div>
+    </CommandPaletteProvider>
   );
 }

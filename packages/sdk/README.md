@@ -45,7 +45,7 @@ High-level: proposes an action, waits for approval, executes, and reports the re
 | `actionType`     | `string`                      | required | e.g. `send_email`, `http_post`     |
 | `payload`        | `Record<string, unknown>`     | required | Action details shown in the inbox  |
 | `metadata`       | `Record<string, unknown>`     | optional | Extra context (environment, etc.)  |
-| `execute`        | `() => Promise<T>`            | required | Runs only if approved              |
+| `execute`        | `(context?: ExecuteContext) => T \| Promise<T>` | required | Runs only if approved. Receives `{ actionId }` for cost correlation. |
 | `expiresInSeconds` | `number \| null`              | optional | Server-side TTL. Omit for default (1 hour). Set to 0 or null for never-expire. |
 | `pollIntervalMs` | `number`                      | 2000     | ms between status polls            |
 | `timeoutMs`      | `number`                      | 300000   | Total timeout in ms                |
@@ -60,6 +60,31 @@ const fetched = await seam.getAction(actionId);
 const decided = await seam.waitForDecision(actionId, { pollIntervalMs, timeoutMs });
 await seam.markResult(actionId, { status: "executed", result: { ... } });
 ```
+
+### Cost correlation
+
+When using the AgentSeam proxy for LLM calls, pass the `actionId` from the execute context as a header to link cost events to the action:
+
+```typescript
+const result = await seam.proposeAndWait({
+  agentId: "my-agent",
+  actionType: "http_post",
+  payload: { prompt: "Summarize this document" },
+  execute: async (context) => {
+    const res = await fetch("https://proxy.agentseam.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-agentseam-action-id": context?.actionId ?? "",
+      },
+      body: JSON.stringify({ model: "gpt-4o", messages: [{ role: "user", content: "Hello" }] }),
+    });
+    return res.json();
+  },
+});
+```
+
+The linked cost data will appear on the action detail page in the dashboard.
 
 ## Error handling
 

@@ -1,6 +1,6 @@
 ---
 name: audit-status
-description: Show current audit findings progress
+description: Show audit findings progress and security review status. Use when asked about audit status, security findings, remaining issues, or what to work on next.
 allowed-tools: Read, Grep
 user-invocable: true
 ---

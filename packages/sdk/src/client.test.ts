@@ -373,6 +373,57 @@ describe("proposeAndWait", () => {
     ).rejects.toThrow("original execute error");
   });
 
+  it("passes ExecuteContext with actionId to execute callback", async () => {
+    const createResp: CreateActionResponse = { id: "act-ctx-1", status: "pending" };
+    const approved = mockAction({ id: "act-ctx-1", status: "approved" });
+
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      .mockResolvedValueOnce(jsonResponse(approved))
+      .mockResolvedValueOnce(jsonResponse({ id: "act-ctx-1", status: "executing" }))
+      .mockResolvedValueOnce(jsonResponse({ id: "act-ctx-1", status: "executed" }));
+
+    const client = createClient(fetchFn);
+    const execute = vi.fn().mockResolvedValue({ done: true });
+
+    await client.proposeAndWait({
+      agentId: "agent-1",
+      actionType: "http_post",
+      payload: { url: "https://example.com" },
+      execute,
+      pollIntervalMs: 10,
+      timeoutMs: 5000,
+    });
+
+    expect(execute).toHaveBeenCalledWith({ actionId: "act-ctx-1" });
+  });
+
+  it("works with execute callbacks that ignore context (backwards compat)", async () => {
+    const createResp: CreateActionResponse = { id: "act-compat", status: "pending" };
+    const approved = mockAction({ id: "act-compat", status: "approved" });
+
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(createResp, 201))
+      .mockResolvedValueOnce(jsonResponse(approved))
+      .mockResolvedValueOnce(jsonResponse({ id: "act-compat", status: "executing" }))
+      .mockResolvedValueOnce(jsonResponse({ id: "act-compat", status: "executed" }));
+
+    const client = createClient(fetchFn);
+
+    const result = await client.proposeAndWait({
+      agentId: "agent-1",
+      actionType: "send_email",
+      payload: { to: "test@example.com" },
+      execute: async () => "sent",
+      pollIntervalMs: 10,
+      timeoutMs: 5000,
+    });
+
+    expect(result).toBe("sent");
+  });
+
   it("handles primitive return values from execute", async () => {
     const createResp: CreateActionResponse = { id: "act-1", status: "pending" };
     const approved = mockAction({ id: "act-1", status: "approved" });

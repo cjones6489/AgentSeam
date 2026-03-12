@@ -1,0 +1,75 @@
+import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
+
+import { serializeCostEvent } from "@/lib/cost-events/serialize-cost-event";
+import { getDb } from "@/lib/db/client";
+import { apiKeys, costEvents } from "@agentseam/db";
+
+interface ListCostEventsOptions {
+  userId: string;
+  limit: number;
+  cursor?: { createdAt: string; id: string };
+  apiKeyId?: string;
+  model?: string;
+}
+
+export async function listCostEvents(options: ListCostEventsOptions) {
+  const db = getDb();
+  const conditions = [
+    eq(apiKeys.userId, options.userId),
+    isNull(apiKeys.revokedAt),
+  ];
+
+  if (options.apiKeyId) {
+    conditions.push(eq(costEvents.apiKeyId, options.apiKeyId));
+  }
+  if (options.model) {
+    conditions.push(eq(costEvents.model, options.model));
+  }
+
+  if (options.cursor) {
+    const cursorDate = new Date(options.cursor.createdAt);
+    conditions.push(
+      or(
+        lt(costEvents.createdAt, cursorDate),
+        and(
+          eq(costEvents.createdAt, cursorDate),
+          lt(costEvents.id, options.cursor.id),
+        ),
+      )!,
+    );
+  }
+
+  const rows = await db
+    .select({
+      id: costEvents.id,
+      requestId: costEvents.requestId,
+      apiKeyId: costEvents.apiKeyId,
+      provider: costEvents.provider,
+      model: costEvents.model,
+      inputTokens: costEvents.inputTokens,
+      outputTokens: costEvents.outputTokens,
+      cachedInputTokens: costEvents.cachedInputTokens,
+      reasoningTokens: costEvents.reasoningTokens,
+      costMicrodollars: costEvents.costMicrodollars,
+      durationMs: costEvents.durationMs,
+      createdAt: costEvents.createdAt,
+      keyName: apiKeys.name,
+    })
+    .from(costEvents)
+    .innerJoin(apiKeys, eq(costEvents.apiKeyId, apiKeys.id))
+    .where(and(...conditions))
+    .orderBy(desc(costEvents.createdAt), desc(costEvents.id))
+    .limit(options.limit + 1);
+
+  const hasMore = rows.length > options.limit;
+  const pageRows = hasMore ? rows.slice(0, options.limit) : rows;
+  const lastRow = pageRows[pageRows.length - 1];
+
+  return {
+    data: pageRows.map(serializeCostEvent),
+    cursor:
+      hasMore && lastRow
+        ? { createdAt: lastRow.createdAt.toISOString(), id: lastRow.id }
+        : null,
+  };
+}

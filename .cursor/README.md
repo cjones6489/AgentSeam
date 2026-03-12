@@ -10,11 +10,20 @@ This project intentionally keeps Cursor guidance lean.
 
 ## Current Rules
 
-- `project-core.mdc`: product focus, stack, and v1 guardrails
-- `frontend-design.mdc`: UI taste and interaction guidance
+- `project-core.mdc`: product focus, stack, and v1 guardrails (always-on)
+- `api-db-patterns.mdc`: API, cost tracking, budget, and DB patterns
+- `frontend-design.mdc`: UI taste and cost dashboard guidance
 - `react-next-patterns.mdc`: app and component structure for React/Next UI files
-- `api-db-patterns.mdc`: route, validation, state machine, and DB patterns
-- `testing.mdc`: testing priorities for test files only
+- `testing.mdc`: testing priorities and proxy test patterns
+- `security.mdc`: security requirements for auth, API, and proxy code
+- `proxy-worker.mdc`: Cloudflare Workers proxy guardrails and architecture
+
+## Skills
+
+Skills live in `.claude/skills/` and are auto-discovered by both Cursor and Claude Code. No duplication needed.
+
+- `audit-status`: summarize security audit progress from `docs/audit-findings.md`
+- `test-all`: run all monorepo test suites and report results
 
 ## Maintenance Guidelines
 

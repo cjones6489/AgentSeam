@@ -1,37 +1,139 @@
 ---
-description: Frontend design direction for AgentSeam dashboards and product UI
+description: Frontend design system and UI patterns for AgentSeam
 globs: "app/**/*.tsx,components/**/*.tsx,app/**/*.css,styles/**/*.css"
 alwaysApply: false
 ---
 
-# AgentSeam Frontend Design
+# Frontend Design System
 
 Design for trust, clarity, and operator confidence.
+Build interfaces that feel like a high-trust operations dashboard (Vercel, Linear, Stripe), not a flashy AI landing page.
 
-## Visual Direction
+## Typography Hierarchy
 
-- Build interfaces that feel like a high-trust operations dashboard, not a flashy AI landing page.
-- Prefer strong hierarchy, generous whitespace, and obvious primary actions.
-- Use restrained depth: borders, soft shadows, muted layering.
-- Keep payloads and technical data readable with monospace treatments where useful.
+Use these exact classes. Do not invent new sizes.
 
-## Use
+- Page title: `text-xl font-semibold tracking-tight text-foreground`
+- Page subtitle: `mt-1 text-[13px] text-muted-foreground`
+- Section / card title: `text-sm font-medium text-foreground`
+- Body text: `text-[13px] text-foreground`
+- Table cell text: `text-[13px]` (font-medium for primary column, regular for others)
+- Labels and captions: `text-[11px] text-muted-foreground`
+- Table headers: `text-[11px] font-medium uppercase tracking-wider text-muted-foreground`
+- Monetary and numeric values: add `tabular-nums` (and `font-mono` for IDs/keys)
 
-- shadcn/ui primitives and Tailwind utilities
-- Clean tables, cards, dialogs, badges, tabs, and toasts
-- Status colors that are clear but not loud
-- Very obvious approve and reject affordances
+## Spacing Scale
+
+- Page-level wrapper: `space-y-6`
+- Settings / multi-section pages: `space-y-8`
+- Card internal padding: `p-4` (compact) or `p-6` (spacious)
+- Stat card grids: `grid grid-cols-3 gap-3 p-4`
+- Section gap within a card: `space-y-4`
+- Form field gap: `space-y-1.5` (label to input), `space-y-4` (between fields)
+
+## Color Usage
+
+These are the only status/semantic colors. Do not add new ones.
+
+- Normal text: `text-foreground`
+- Secondary text: `text-muted-foreground`
+- Success / healthy: `text-emerald-400`, `bg-emerald-500`
+- Warning / at-risk (>=70% budget): `text-amber-400`, `bg-amber-500`
+- Danger / critical (>=90% budget): `text-red-400`, `bg-red-500`
+- Error banners: `border-red-500/20 bg-red-500/5 text-red-400`
+- Default progress / primary: `bg-primary`
+
+## Component Patterns
+
+### Page Layout
+
+Every dashboard page follows this structure:
+
+```
+<div className="space-y-6">
+  {/* Header */}
+  <div>
+    <h1 className="text-xl font-semibold tracking-tight text-foreground">Title</h1>
+    <p className="mt-1 text-[13px] text-muted-foreground">Subtitle.</p>
+  </div>
+
+  {/* Optional: filters / tabs */}
+  {/* Optional: summary stat cards */}
+  {/* Main content: card-wrapped table, list, or form */}
+</div>
+```
+
+Settings pages add `mx-auto max-w-3xl` and use `space-y-8`.
+
+### Cards
+
+- Border: `border-border/50 bg-card`
+- Header with action button: `flex flex-row items-center justify-between pb-4`
+- Table inside card: table starts after `border-t border-border/30`, no outer card border on table
+
+### Tables
+
+- Container: `overflow-hidden rounded-lg border border-border/50 bg-card`
+- Header row: `border-border/50 hover:bg-transparent`
+- Body rows: `border-border/30 transition-colors hover:bg-accent/40`
+- Primary cell (linked): `text-[13px] font-medium text-foreground hover:text-primary`
+- Secondary cells: `text-xs text-muted-foreground`
+
+### Empty States
+
+Centered layout with icon, title, and optional CTA:
+
+```
+<div className="flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed border-border/50 py-20 text-center">
+  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary/50">
+    <Icon className="h-5 w-5 text-muted-foreground" />
+  </div>
+  <div>
+    <p className="text-sm font-medium text-foreground">Title</p>
+    <p className="mt-1 text-xs text-muted-foreground">Description.</p>
+  </div>
+  {/* Optional CTA button */}
+</div>
+```
+
+### Stat Cards
+
+```
+<div className="rounded-lg border border-border/30 bg-background p-3">
+  <p className="text-lg font-semibold tabular-nums text-foreground">Value</p>
+  <p className="text-[11px] text-muted-foreground">Label</p>
+</div>
+```
+
+### Loading Skeletons
+
+Use `<Skeleton className="h-12 w-full rounded-lg bg-secondary/50" />` stacked with `space-y-2`.
+
+### Buttons
+
+- Primary CTA in card headers: `inline-flex h-8 items-center gap-1.5 rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90`
+- Use `<Button size="sm">` for dialog footers
+- Cancel buttons in dialogs: `inline-flex h-8 ... border border-border/50 bg-secondary`
+
+### Dialogs
+
+- Always include `DialogTitle` and `DialogDescription`
+- Form fields use `Label className="text-xs text-muted-foreground"`
+- Inputs: `h-9 border-border/50 bg-background text-[13px]`
 
 ## Avoid
 
-- Generic AI SaaS aesthetics: purple gradients, neon glows, glassmorphism everywhere
-- Over-rounded cards, cluttered KPI walls, or decorative noise
+- Purple gradients, neon glows, glassmorphism
+- Over-rounded cards, cluttered KPI walls, decorative noise
 - Equal visual weight on every element
 - Placeholder lorem ipsum or vague labels
+- Inventing new font sizes, colors, or spacing outside this system
 
-## Interaction Guidance
+## Design Workflow
 
-- Approval actions should be easy to scan and hard to misclick.
-- Pending states should feel actionable; executed and rejected states should feel settled.
-- Favor one strong layout idea over many scattered flourishes.
+- When building a new page, follow the Page Layout pattern above.
+- Reference `app/(dashboard)/app/inbox/page.tsx` as the visual standard for list pages.
+- Reference `app/(dashboard)/app/settings/page.tsx` as the standard for form/config pages.
 - If a page is design-heavy, propose 2 concise visual directions before implementing.
+- Budget and cost states must be scannable at a glance.
+- Normal states feel calm; warning/danger states feel urgent.

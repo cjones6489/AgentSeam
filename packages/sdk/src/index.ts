@@ -7,6 +7,7 @@ export type {
   AgentSeamConfig,
   CreateActionInput,
   CreateActionResponse,
+  ExecuteContext,
   ActionRecord,
   MarkResultInput,
   MutateActionResponse,

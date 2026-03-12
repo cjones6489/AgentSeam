@@ -1,0 +1,35 @@
+import type { CostEventRecord } from "@/lib/validations/cost-events";
+
+interface CostEventJoinRow {
+  id: string;
+  requestId: string;
+  apiKeyId: string | null;
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  reasoningTokens: number;
+  costMicrodollars: number;
+  durationMs: number | null;
+  createdAt: Date;
+  keyName: string;
+}
+
+export function serializeCostEvent(row: CostEventJoinRow): CostEventRecord {
+  return {
+    id: row.id,
+    requestId: row.requestId,
+    apiKeyId: row.apiKeyId,
+    provider: row.provider,
+    model: row.model,
+    inputTokens: row.inputTokens,
+    outputTokens: row.outputTokens,
+    cachedInputTokens: row.cachedInputTokens,
+    reasoningTokens: row.reasoningTokens,
+    costMicrodollars: row.costMicrodollars,
+    durationMs: row.durationMs,
+    createdAt: row.createdAt.toISOString(),
+    keyName: row.keyName,
+  };
+}

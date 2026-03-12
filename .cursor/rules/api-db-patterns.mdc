@@ -1,6 +1,6 @@
 ---
-description: API, validation, action lifecycle, and database patterns for AgentSeam
-globs: "app/api/**/*.ts,lib/**/*.ts,drizzle/**/*.ts"
+description: API, cost tracking, budget enforcement, and database patterns for AgentSeam
+globs: "app/api/**/*.ts,lib/**/*.ts,drizzle/**/*.ts,apps/proxy/src/**/*.ts,packages/db/src/**/*.ts"
 alwaysApply: false
 ---
 
@@ -10,24 +10,32 @@ alwaysApply: false
 
 - Keep route handlers minimal, typed, and easy to read.
 - Validate request input with Zod at the route boundary.
-- Return compact responses in v1; do not over-design envelopes.
-- Prefer explicit helper functions in `lib/` for action operations.
+- Return compact responses; do not over-design envelopes.
 
-## Action Lifecycle
+## Cost Tracking
 
-- Treat action status as an explicit state machine.
-- Allowed core states: `pending`, `approved`, `rejected`, `executing`, `executed`, `failed`, `expired`.
-- Do not skip transitions or mutate status casually.
-- Record timestamps and actor fields when a transition occurs.
+- Store all costs as microdollars (integer, 1 USD = 1,000,000).
+- Never use floating point for money math.
+
+```ts
+// good
+const costMicrodollars = inputTokens * pricePerMillionInput;
+
+// bad
+const cost = inputTokens * 0.000003;
+```
+
+- Log cost events asynchronously via `ctx.waitUntil()` in the proxy.
 
 ## Database
 
-- Use Drizzle schema definitions and typed queries.
-- Optimize for a simple `actions` table first; add event or receipt tables only after the core loop works.
-- Prefer additive schema changes and boring column names over clever modeling.
+- Schema source of truth: `packages/db/src/schema.ts`.
+- Import from `@agentseam/db`, never from a relative path to the schema.
+- Use Drizzle typed queries and inserts.
+- Prefer additive schema changes and boring column names.
 
-## v1 Product Guardrails
+## v1 Guardrails
 
 - Use polling before realtime.
 - Avoid policy engines, workflow systems, and framework-specific abstractions.
-- If a backend idea adds complexity without improving the end-to-end approval demo, defer it.
+- If a backend idea adds complexity without improving cost tracking or budget enforcement, defer it.

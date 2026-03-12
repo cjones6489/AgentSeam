@@ -1,15 +1,39 @@
 "use client";
 
-import { Inbox, Clock, Settings, Shield } from "lucide-react";
+import { Activity, Inbox, Clock, DollarSign, Settings, Shield } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
+import type { LucideIcon } from "lucide-react";
 
-const navItems = [
-  { href: "/app/inbox", label: "Inbox", icon: Inbox },
-  { href: "/app/history", label: "History", icon: Clock },
-  { href: "/app/settings", label: "Settings", icon: Settings },
+interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+const navSections: { label: string; items: NavItem[] }[] = [
+  {
+    label: "Approvals",
+    items: [
+      { href: "/app/inbox", label: "Inbox", icon: Inbox },
+      { href: "/app/history", label: "History", icon: Clock },
+    ],
+  },
+  {
+    label: "FinOps",
+    items: [
+      { href: "/app/budgets", label: "Budgets", icon: DollarSign },
+      { href: "/app/activity", label: "Activity", icon: Activity },
+    ],
+  },
+  {
+    label: "Configure",
+    items: [
+      { href: "/app/settings", label: "Settings", icon: Settings },
+    ],
+  },
 ];
 
 export function Sidebar() {
@@ -26,25 +50,34 @@ export function Sidebar() {
           AgentSeam
         </Link>
       </div>
-      <nav className="flex flex-1 flex-col gap-0.5 p-2">
-        {navItems.map((item) => {
-          const isActive = pathname.startsWith(item.href);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-2.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
-                isActive
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-              )}
-            >
-              <item.icon className="h-3.5 w-3.5" />
-              {item.label}
-            </Link>
-          );
-        })}
+      <nav className="flex flex-1 flex-col p-2">
+        {navSections.map((section) => (
+          <div key={section.label}>
+            <p className="px-3 pt-4 pb-1 text-[10px] font-medium uppercase tracking-widest text-muted-foreground/50">
+              {section.label}
+            </p>
+            <div className="flex flex-col gap-0.5">
+              {section.items.map((item) => {
+                const isActive = pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors",
+                      isActive
+                        ? "bg-accent text-accent-foreground"
+                        : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                    )}
+                  >
+                    <item.icon className="h-3.5 w-3.5" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
       <div className="border-t border-border/50 p-3">
         <p className="text-[11px] text-muted-foreground/60">v0.1.0</p>

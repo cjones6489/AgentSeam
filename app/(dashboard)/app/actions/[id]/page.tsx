@@ -5,6 +5,7 @@ import Link from "next/link";
 import { use } from "react";
 
 import { ActionTimeline } from "@/components/actions/action-timeline";
+import { CostCard } from "@/components/actions/cost-card";
 import { DecisionControls } from "@/components/actions/decision-controls";
 import { PayloadViewer } from "@/components/actions/payload-viewer";
 import { StatusBadge } from "@/components/actions/status-badge";
@@ -116,6 +117,10 @@ export default function ActionDetailPage({
               <DetailRow label="Framework" value={action.sourceFramework} />
             </CardContent>
           </Card>
+
+          {["executing", "executed", "failed"].includes(action.status) && (
+            <CostCard actionId={action.id} />
+          )}
 
           <Card className="border-border/50 bg-card">
             <CardContent className="pt-6">

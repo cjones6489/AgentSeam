@@ -1,4 +1,5 @@
 import { waitUntil } from "cloudflare:workers";
+import { Redis } from "@upstash/redis/cloudflare";
 import { validatePlatformKey, unauthorizedResponse } from "../lib/auth.js";
 import { buildUpstreamHeaders, buildClientHeaders } from "../lib/headers.js";
 import { ensureStreamOptions, extractModelFromBody } from "../lib/request-utils.js";
@@ -7,6 +8,10 @@ import { calculateOpenAICost } from "../lib/cost-calculator.js";
 import { isKnownModel } from "@agentseam/cost-engine";
 import { logCostEvent } from "../lib/cost-logger.js";
 import { OPENAI_BASE_URL } from "../lib/constants.js";
+import { checkAndReserve, reconcile, type BudgetCheckResult } from "../lib/budget.js";
+import { lookupBudgets, type BudgetEntity } from "../lib/budget-lookup.js";
+import { estimateMaxCost } from "../lib/cost-estimator.js";
+import { updateBudgetSpend } from "../lib/budget-spend.js";
 
 export async function handleChatCompletions(
   request: Request,
@@ -23,6 +28,7 @@ export async function handleChatCompletions(
   const attribution = {
     userId: request.headers.get("x-agentseam-user-id"),
     apiKeyId: request.headers.get("x-agentseam-key-id"),
+    actionId: request.headers.get("x-agentseam-action-id"),
   };
 
   if (!isKnownModel("openai", requestModel)) {
@@ -38,34 +44,110 @@ export async function handleChatCompletions(
     ensureStreamOptions(body);
   }
 
-  const upstreamHeaders = buildUpstreamHeaders(request);
-  const startTime = performance.now();
+  // --- Budget enforcement ---
+  const redis = Redis.fromEnv(env);
+  const connectionString = env.HYPERDRIVE.connectionString;
+  let reservationId: string | null = null;
+  let budgetEntities: BudgetEntity[] = [];
 
-  // Workers have no CPU time limit on streaming responses (wall-clock is fine).
-  // Non-streaming GPT-4 class models can take >25s; 120s gives them room.
-  const UPSTREAM_TIMEOUT_MS = 120_000;
-
-  const upstreamResponse = await fetch(`${OPENAI_BASE_URL}/v1/chat/completions`, {
-    method: "POST",
-    headers: upstreamHeaders,
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-  });
-
-  if (!upstreamResponse.ok) {
-    const clientHeaders = buildClientHeaders(upstreamResponse);
-    return new Response(upstreamResponse.body, {
-      status: upstreamResponse.status,
-      headers: clientHeaders,
-    });
+  try {
+    budgetEntities = await lookupBudgets(
+      redis,
+      connectionString,
+      attribution.apiKeyId,
+      attribution.userId,
+    );
+  } catch {
+    // Budget lookup failed — fail-closed (budget is a safety feature)
+    return Response.json(
+      { error: "budget_unavailable", message: "Budget service unavailable" },
+      { status: 503 },
+    );
   }
 
-  const requestId =
-    upstreamResponse.headers.get("x-request-id") ?? crypto.randomUUID();
-  const clientHeaders = buildClientHeaders(upstreamResponse);
+  if (budgetEntities.length > 0) {
+    const estimate = estimateMaxCost(requestModel, body);
+    const entityKeys = budgetEntities.map((e) => e.entityKey);
 
-  if (isStreaming) {
-    return handleStreaming(
+    let checkResult: BudgetCheckResult;
+    try {
+      checkResult = await checkAndReserve(redis, entityKeys, estimate);
+    } catch {
+      return Response.json(
+        { error: "budget_unavailable", message: "Budget service unavailable" },
+        { status: 503 },
+      );
+    }
+
+    if (checkResult.status === "denied") {
+      return Response.json(
+        {
+          error: "budget_exceeded",
+          message: "Request blocked: estimated cost exceeds remaining budget",
+          details: {
+            entity_key: checkResult.entityKey,
+            remaining_microdollars: checkResult.remaining,
+            estimated_microdollars: estimate,
+            budget_limit_microdollars: checkResult.maxBudget,
+            spent_microdollars: checkResult.spend,
+          },
+        },
+        { status: 429 },
+      );
+    }
+
+    reservationId = checkResult.reservationId;
+  }
+
+  // --- Forward to upstream ---
+  const upstreamHeaders = buildUpstreamHeaders(request);
+  const startTime = performance.now();
+  const UPSTREAM_TIMEOUT_MS = 120_000;
+
+  // Fix 11: wrap all post-reservation code in try/catch to ensure cleanup
+  try {
+    const upstreamResponse = await fetch(`${OPENAI_BASE_URL}/v1/chat/completions`, {
+      method: "POST",
+      headers: upstreamHeaders,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+
+    if (!upstreamResponse.ok) {
+      // Fix 6: reconcile with actualCost=0 on upstream error
+      if (reservationId) {
+        waitUntil(
+          reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
+        );
+      }
+      const clientHeaders = buildClientHeaders(upstreamResponse);
+      return new Response(upstreamResponse.body, {
+        status: upstreamResponse.status,
+        headers: clientHeaders,
+      });
+    }
+
+    const requestId =
+      upstreamResponse.headers.get("x-request-id") ?? crypto.randomUUID();
+    const clientHeaders = buildClientHeaders(upstreamResponse);
+
+    if (isStreaming) {
+      return handleStreaming(
+        upstreamResponse,
+        clientHeaders,
+        requestModel,
+        requestId,
+        startTime,
+        env,
+        attribution,
+        redis,
+        reservationId,
+        budgetEntities,
+        connectionString,
+      );
+    }
+
+    return await handleNonStreaming(
       upstreamResponse,
       clientHeaders,
       requestModel,
@@ -73,21 +155,49 @@ export async function handleChatCompletions(
       startTime,
       env,
       attribution,
+      redis,
+      reservationId,
+      budgetEntities,
+      connectionString,
     );
+  } catch (err) {
+    // Fix 11: clean up reservation on fetch timeout or unexpected error
+    if (reservationId) {
+      waitUntil(
+        reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
+      );
+    }
+    throw err;
   }
-
-  return handleNonStreaming(
-    upstreamResponse,
-    clientHeaders,
-    requestModel,
-    requestId,
-    startTime,
-    env,
-    attribution,
-  );
 }
 
-type Attribution = { userId: string | null; apiKeyId: string | null };
+type Attribution = { userId: string | null; apiKeyId: string | null; actionId: string | null };
+
+/**
+ * Never-throwing helper that reconciles a budget reservation and updates
+ * Postgres spend. Always called inside `waitUntil`.
+ */
+async function reconcileReservation(
+  redis: Redis,
+  reservationId: string,
+  actualCostMicrodollars: number,
+  budgetEntities: BudgetEntity[],
+  connectionString: string,
+): Promise<void> {
+  try {
+    const entityKeys = budgetEntities.map((e) => e.entityKey);
+    await reconcile(redis, reservationId, entityKeys, actualCostMicrodollars);
+    if (actualCostMicrodollars > 0) {
+      const entities = budgetEntities.map((e) => ({
+        entityType: e.entityType,
+        entityId: e.entityId,
+      }));
+      await updateBudgetSpend(connectionString, entities, actualCostMicrodollars);
+    }
+  } catch (err) {
+    console.error("[budget] Reconciliation failed:", err);
+  }
+}
 
 function handleStreaming(
   upstreamResponse: Response,
@@ -97,9 +207,18 @@ function handleStreaming(
   startTime: number,
   env: Env,
   attribution: Attribution,
+  redis: Redis,
+  reservationId: string | null,
+  budgetEntities: BudgetEntity[],
+  connectionString: string,
 ): Response {
   const upstreamBody = upstreamResponse.body;
   if (!upstreamBody) {
+    if (reservationId) {
+      waitUntil(
+        reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
+      );
+    }
     return new Response("No response body from upstream", { status: 502 });
   }
 
@@ -116,6 +235,12 @@ function handleStreaming(
               " cost event not recorded.",
             { requestId, model: requestModel, durationMs },
           );
+          // Fix 6: reconcile with 0 when no usage data available
+          if (reservationId) {
+            await reconcileReservation(
+              redis, reservationId, 0, budgetEntities, connectionString,
+            );
+          }
           return;
         }
 
@@ -129,8 +254,23 @@ function handleStreaming(
         );
 
         await logCostEvent(env.HYPERDRIVE.connectionString, costEvent);
+
+        if (reservationId) {
+          await reconcileReservation(
+            redis, reservationId, costEvent.costMicrodollars,
+            budgetEntities, connectionString,
+          );
+        }
       } catch (err) {
         console.error("[openai-route] Failed to process streaming cost event:", err);
+        // Last-resort: try to reconcile with 0 on unexpected error
+        if (reservationId) {
+          try {
+            await reconcileReservation(
+              redis, reservationId, 0, budgetEntities, connectionString,
+            );
+          } catch { /* already logged inside reconcileReservation */ }
+        }
       }
     }),
   );
@@ -153,6 +293,10 @@ async function handleNonStreaming(
   startTime: number,
   env: Env,
   attribution: Attribution,
+  redis: Redis,
+  reservationId: string | null,
+  budgetEntities: BudgetEntity[],
+  connectionString: string,
 ): Promise<Response> {
   const responseText = await upstreamResponse.text();
   const durationMs = Math.round(performance.now() - startTime);
@@ -173,9 +317,29 @@ async function handleNonStreaming(
       );
 
       waitUntil(logCostEvent(env.HYPERDRIVE.connectionString, costEvent));
+
+      if (reservationId) {
+        waitUntil(
+          reconcileReservation(
+            redis, reservationId, costEvent.costMicrodollars,
+            budgetEntities, connectionString,
+          ),
+        );
+      }
+    } else if (reservationId) {
+      // No usage in parsed response — reconcile with 0
+      waitUntil(
+        reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
+      );
     }
   } catch {
     console.error("[openai-route] Failed to parse non-streaming response for cost tracking");
+    // Fix 6: reconcile on parse failure
+    if (reservationId) {
+      waitUntil(
+        reconcileReservation(redis, reservationId, 0, budgetEntities, connectionString),
+      );
+    }
   }
 
   return new Response(responseText, {

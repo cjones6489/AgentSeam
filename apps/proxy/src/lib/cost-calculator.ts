@@ -20,7 +20,7 @@ export function calculateOpenAICost(
   usage: OpenAIUsage,
   requestId: string,
   durationMs: number,
-  attribution?: { userId: string | null; apiKeyId: string | null },
+  attribution?: { userId: string | null; apiKeyId: string | null; actionId: string | null },
 ): CostEventInsert {
   const promptTokens = Number(usage.prompt_tokens) || 0;
   const completionTokens = Number(usage.completion_tokens) || 0;
@@ -58,5 +58,6 @@ export function calculateOpenAICost(
     durationMs,
     userId: attribution?.userId ?? null,
     apiKeyId: attribution?.apiKeyId ?? null,
+    actionId: attribution?.actionId ?? null,
   };
 }

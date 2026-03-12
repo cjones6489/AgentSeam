@@ -1,24 +1,43 @@
 ---
-description: Testing expectations for AgentSeam features and flows
+description: Testing standards for AgentSeam proxy, dashboard, and shared packages
 globs: "**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx"
 alwaysApply: false
 ---
 
-# Testing Expectations
+# Testing
 
-- Test behavior that proves the approval loop works.
 - Favor small, focused tests close to the logic they cover.
-- Cover state transitions, validation failures, approval vs rejection paths, and execution result handling.
 - Prefer deterministic tests over broad mocked integration theater.
+
+## Two Separate Suites
+
+- `pnpm test` — root tests (dashboard, shared packages). Excludes `apps/`.
+- `pnpm proxy:test` — proxy worker tests (`apps/proxy/`).
+- Always run both when changes span root and proxy.
 
 ## v1 Priorities
 
-- API routes: request validation, happy path, rejected input
-- Action helpers: valid and invalid state transitions
-- UI: pending, approved, rejected, executed, failed, and empty states where practical
-- SDK: approved continues, rejected blocks, failed execution logs and rethrows
+- Proxy: auth validation, cost calculation, budget enforcement, SSE parsing
+- Dashboard API routes: request validation, happy path, error responses
+- Cost engine: microdollar math, model pricing lookups
+- Schema: Zod/Drizzle round-trip, enum coverage
+
+## Proxy Test Patterns
+
+```ts
+vi.mock("cloudflare:workers", () => ({ env: makeEnv() }));
+vi.mock("@upstash/redis/cloudflare", () => ({ Redis: MockRedis }));
+
+beforeAll(() => {
+  // Polyfill for Node test environment
+  crypto.subtle.timingSafeEqual = (a, b) => { /* ... */ };
+});
+```
+
+- Use `makeEnv()` for typed `Env` with test values.
+- Use `makeCtx()` for mock `ExecutionContext`.
 
 ## Quality Bar
 
-- Add tests for new branching logic and action-state behavior.
-- Avoid shipping critical flow changes without a direct test of the affected path.
+- Add tests for new branching logic and cost/budget behavior.
+- Do not ship critical proxy changes without a test of the affected path.

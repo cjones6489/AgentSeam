@@ -1,0 +1,43 @@
+---
+description: Cloudflare Workers proxy guardrails and architecture
+globs: "apps/proxy/**/*.ts"
+alwaysApply: false
+---
+
+# Proxy Worker
+
+## Critical Rules
+
+- **NEVER use `passThroughOnException()`** — proxy must fail closed (502), never forward unauthenticated/untracked requests.
+- **NEVER add failover logic** that bypasses auth or cost tracking.
+- Auth check must be the absolute first thing before any processing.
+- Body size limit (1MB) enforced both pre-read (Content-Length) and post-read (byte count).
+
+## Architecture
+
+```
+src/index.ts          → entry point, routing, body parsing
+src/routes/openai.ts  → chat completions handler
+src/lib/auth.ts       → platform key validation (timing-safe)
+src/lib/cost-calculator.ts → token-to-cost conversion
+src/lib/cost-logger.ts     → async DB write via ctx.waitUntil()
+src/lib/sse-parser.ts      → streaming response parser
+src/lib/headers.ts         → header sanitization
+```
+
+## Cost Tracking Flow
+
+Request → Auth → Forward to OpenAI → Parse response/stream → Extract usage → Calculate cost → Log async via `waitUntil()`
+
+## Code Conventions
+
+- Use `.js` extensions in relative imports (ESM requirement).
+- Import schema from `@agentseam/db`, never relative paths.
+
+## Testing
+
+- Mock `cloudflare:workers` with `vi.mock("cloudflare:workers", ...)`.
+- Mock `@upstash/redis/cloudflare` for Redis.
+- Polyfill `crypto.subtle.timingSafeEqual` in `beforeAll`.
+- Use `makeEnv()` for typed `Env` with test values.
+- Use `makeCtx()` for mock `ExecutionContext`.

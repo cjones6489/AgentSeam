@@ -36,6 +36,30 @@ export function formatTimestamp(dateString: string): string {
   });
 }
 
+export function formatMicrodollars(microdollars: number): string {
+  const dollars = microdollars / 1_000_000;
+  if (dollars >= 0.01 || dollars === 0) return `$${dollars.toFixed(2)}`;
+  return `$${dollars.toFixed(4).replace(/0+$/, "")}`;
+}
+
+export function formatTokens(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
+export function formatDuration(ms: number | null): string {
+  if (ms === null) return "--";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+export function budgetHealthColor(spent: number, limit: number): string {
+  if (limit <= 0) return "bg-primary";
+  const pct = (spent / limit) * 100;
+  if (pct >= 90) return "bg-red-500";
+  if (pct >= 70) return "bg-amber-500";
+  return "bg-primary";
+}
+
 export function formatExpiresAt(expiresAt: string | null): string | null {
   if (!expiresAt) return null;
 

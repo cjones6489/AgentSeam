@@ -1,0 +1,221 @@
+"use client";
+
+import { Activity, Loader2 } from "lucide-react";
+import { useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useCostEvents } from "@/lib/queries/cost-events";
+import {
+  formatDuration,
+  formatMicrodollars,
+  formatRelativeTime,
+  formatTokens,
+} from "@/lib/utils/format";
+
+interface RecentActivityProps {
+  keys: { id: string; name: string }[];
+}
+
+const ALL_KEYS = "all";
+
+export function RecentActivity({ keys }: RecentActivityProps) {
+  const [selectedKeyId, setSelectedKeyId] = useState(ALL_KEYS);
+
+  const filters =
+    selectedKeyId !== ALL_KEYS ? { apiKeyId: selectedKeyId } : {};
+  const {
+    data,
+    isLoading,
+    error,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useCostEvents(filters);
+
+  const events = data?.pages.flatMap((p) => p.data) ?? [];
+  const hasFilter = selectedKeyId !== ALL_KEYS;
+
+  return (
+    <div className="space-y-3">
+      {keys.length > 0 && (
+        <div className="flex justify-end">
+          <Select value={selectedKeyId} onValueChange={(v) => setSelectedKeyId(v ?? ALL_KEYS)}>
+            <SelectTrigger className="h-8 w-[180px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_KEYS}>All keys</SelectItem>
+              {keys.map((key) => (
+                <SelectItem key={key.id} value={key.id}>
+                  {key.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {isLoading && <ActivitySkeleton />}
+
+      {error && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-400">
+          Failed to load cost events. Please try again.
+        </div>
+      )}
+
+      {!isLoading && !error && events.length === 0 && (
+        <EmptyActivity hasFilter={hasFilter} />
+      )}
+
+      {!isLoading && !error && events.length > 0 && (
+        <div className="overflow-hidden rounded-lg border border-border/50 bg-card">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-border/50 hover:bg-transparent">
+                <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Time
+                </TableHead>
+                <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Model
+                </TableHead>
+                {!hasFilter && (
+                  <TableHead className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Key
+                  </TableHead>
+                )}
+                <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Input
+                </TableHead>
+                <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Output
+                </TableHead>
+                <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Cost
+                </TableHead>
+                <TableHead className="text-right text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Latency
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {events.map((event) => (
+                <TableRow
+                  key={event.id}
+                  className="border-border/30 transition-colors hover:bg-accent/40"
+                >
+                  <TableCell
+                    className="text-[13px] text-muted-foreground"
+                    title={event.createdAt}
+                  >
+                    {formatRelativeTime(event.createdAt)}
+                  </TableCell>
+                  <TableCell className="font-mono text-[13px] text-foreground">
+                    {event.model}
+                  </TableCell>
+                  {!hasFilter && (
+                    <TableCell className="text-[13px] text-muted-foreground">
+                      {event.keyName}
+                    </TableCell>
+                  )}
+                  <TableCell className="text-right">
+                    <span className="tabular-nums text-[13px] text-foreground">
+                      {formatTokens(event.inputTokens)}
+                    </span>
+                    {event.cachedInputTokens > 0 && (
+                      <p className="text-[11px] text-muted-foreground">
+                        {formatTokens(event.cachedInputTokens)} cached
+                      </p>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <span className="tabular-nums text-[13px] text-foreground">
+                      {formatTokens(event.outputTokens)}
+                    </span>
+                    {event.reasoningTokens > 0 && (
+                      <p className="text-[11px] text-muted-foreground">
+                        {formatTokens(event.reasoningTokens)} reasoning
+                      </p>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right font-mono tabular-nums text-[13px] text-foreground">
+                    {formatMicrodollars(event.costMicrodollars)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-[13px] text-muted-foreground">
+                    {formatDuration(event.durationMs)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+
+          {hasNextPage && (
+            <div className="flex justify-center border-t border-border/30 py-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+                className="text-xs"
+              >
+                {isFetchingNextPage ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  "Load More"
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmptyActivity({ hasFilter }: { hasFilter: boolean }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed border-border/50 py-20 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary/50">
+        <Activity className="h-5 w-5 text-muted-foreground" />
+      </div>
+      <div>
+        <p className="text-sm font-medium text-foreground">
+          {hasFilter ? "No cost events for this key" : "No API calls recorded yet"}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {hasFilter
+            ? "Try selecting a different API key or view all keys."
+            : "Cost events will appear here as your agents make API calls through the proxy."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ActivitySkeleton() {
+  return (
+    <div className="space-y-2">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Skeleton key={i} className="h-12 w-full rounded-lg bg-secondary/50" />
+      ))}
+    </div>
+  );
+}

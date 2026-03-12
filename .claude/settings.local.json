@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(find /c/Users/cjone/Projects/AgentSeam -name \"schema.ts\" -path \"*/packages/db/*\" 2>/dev/null | head -5)",
+      "Bash(cd C:/Users/cjone/Projects/AgentSeam && npx eslint apps/proxy/src/ 2>&1)",
+      "Bash(find /c/Users/cjone/Projects/AgentSeam -name \"error.tsx\" -o -name \"*error*boundary*\" -type f 2>/dev/null | head -20)",
+      "Bash(find /c/Users/cjone/Projects/AgentSeam -path \"*/migrations/*.sql\" -type f 2>/dev/null | sort)",
+      "Bash(cd C:/Users/cjone/Projects/AgentSeam && pnpm test:all 2>&1 | tail -20)",
+      "Bash(find /c/Users/cjone/Projects/AgentSeam -type f -name \"*validations*\" | grep -E \"\\\\.\\(ts|js\\)$\")",
+      "Bash(ls -lh /c/Users/cjone/Projects/AgentSeam/drizzle/*.sql)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
+}

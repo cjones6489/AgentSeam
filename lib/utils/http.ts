@@ -10,6 +10,7 @@ import {
 import { ApiKeyError } from "@/lib/auth/api-key";
 import {
   AuthenticationRequiredError,
+  ForbiddenError,
   SupabaseEnvError,
 } from "@/lib/auth/errors";
 
@@ -98,6 +99,10 @@ export function handleRouteError(error: unknown) {
 
   if (error instanceof AuthenticationRequiredError) {
     return NextResponse.json({ error: error.message }, { status: 401 });
+  }
+
+  if (error instanceof ForbiddenError) {
+    return NextResponse.json({ error: error.message }, { status: 403 });
   }
 
   if (error instanceof SupabaseEnvError) {

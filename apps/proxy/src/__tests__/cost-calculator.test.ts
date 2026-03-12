@@ -128,3 +128,68 @@ describe("calculateOpenAICost", () => {
     expect(result.costMicrodollars).toBeGreaterThan(0);
   });
 });
+
+describe("calculateOpenAICost actionId attribution", () => {
+  it("includes actionId when provided in attribution", () => {
+    const result = calculateOpenAICost(
+      "gpt-4o",
+      null,
+      { prompt_tokens: 100, completion_tokens: 50 },
+      "req-with-action",
+      100,
+      { userId: "user-1", apiKeyId: "key-1", actionId: "act-abc-123" },
+    );
+
+    expect(result.actionId).toBe("act-abc-123");
+    expect(result.userId).toBe("user-1");
+    expect(result.apiKeyId).toBe("key-1");
+  });
+
+  it("sets actionId to null when attribution has null actionId", () => {
+    const result = calculateOpenAICost(
+      "gpt-4o",
+      null,
+      { prompt_tokens: 100, completion_tokens: 50 },
+      "req-null-action",
+      100,
+      { userId: "user-1", apiKeyId: "key-1", actionId: null },
+    );
+
+    expect(result.actionId).toBeNull();
+  });
+
+  it("sets actionId to null when no attribution provided", () => {
+    const result = calculateOpenAICost(
+      "gpt-4o",
+      null,
+      { prompt_tokens: 100, completion_tokens: 50 },
+      "req-no-attr",
+      100,
+    );
+
+    expect(result.actionId).toBeNull();
+    expect(result.userId).toBeNull();
+    expect(result.apiKeyId).toBeNull();
+  });
+
+  it("preserves actionId alongside correct cost calculation", () => {
+    const result = calculateOpenAICost(
+      "gpt-4o",
+      null,
+      {
+        prompt_tokens: 1000,
+        completion_tokens: 500,
+        prompt_tokens_details: { cached_tokens: 200 },
+        completion_tokens_details: { reasoning_tokens: 0 },
+      },
+      "req-action-cost",
+      250,
+      { userId: "u-1", apiKeyId: "k-1", actionId: "act-xyz" },
+    );
+
+    expect(result.actionId).toBe("act-xyz");
+    expect(result.costMicrodollars).toBe(7250);
+    expect(result.inputTokens).toBe(1000);
+    expect(result.cachedInputTokens).toBe(200);
+  });
+});

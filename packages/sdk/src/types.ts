@@ -100,6 +100,11 @@ export interface MutateActionResponse {
 // proposeAndWait options
 // ---------------------------------------------------------------------------
 
+/** Context passed to the execute callback with the action ID for cost correlation. */
+export interface ExecuteContext {
+  actionId: string;
+}
+
 export interface ProposeAndWaitOptions<T> {
   agentId: string;
   actionType: ActionType | (string & {});
@@ -107,7 +112,12 @@ export interface ProposeAndWaitOptions<T> {
   metadata?: Record<string, unknown>;
   /** Server-side TTL in seconds. Omit for server default (1 hour). Set to 0 or null to never expire. */
   expiresInSeconds?: number | null;
-  execute: () => Promise<T>;
+  /**
+   * Called after the action is approved. Receives context with `actionId` which
+   * can be sent as the `x-agentseam-action-id` header when calling the proxy
+   * to correlate cost events with this action.
+   */
+  execute: (context?: ExecuteContext) => T | Promise<T>;
   /** Milliseconds between polls. Default: 2000 */
   pollIntervalMs?: number;
   /** Total timeout in milliseconds. Default: 300000 (5 min) */

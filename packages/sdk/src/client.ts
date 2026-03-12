@@ -108,7 +108,7 @@ export class AgentSeam {
     await this.markResult(id, { status: "executing" });
 
     try {
-      const result = await options.execute();
+      const result = await options.execute({ actionId: id });
 
       const serializable =
         result !== null && typeof result === "object"

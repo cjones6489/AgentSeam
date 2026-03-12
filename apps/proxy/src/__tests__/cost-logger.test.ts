@@ -43,6 +43,7 @@ function makeCostEvent(overrides: Record<string, unknown> = {}) {
     durationMs: 250,
     userId: null,
     apiKeyId: null,
+    actionId: null,
     ...overrides,
   };
 }

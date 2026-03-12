@@ -124,12 +124,14 @@ export const costEvents = pgTable("cost_events", {
   reasoningTokens: integer("reasoning_tokens").notNull().default(0),
   costMicrodollars: bigint("cost_microdollars", { mode: "number" }).notNull(),
   durationMs: integer("duration_ms"),
+  actionId: uuid("action_id").references(() => actions.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("cost_events_request_id_provider_idx").on(table.requestId, table.provider),
   index("cost_events_user_id_created_at_idx").on(table.userId, table.createdAt),
   index("cost_events_api_key_id_created_at_idx").on(table.apiKeyId, table.createdAt),
   index("cost_events_provider_model_created_at_idx").on(table.provider, table.model, table.createdAt),
+  index("cost_events_action_id_idx").on(table.actionId),
 ]);
 
 export type CostEventRow = typeof costEvents.$inferSelect;
