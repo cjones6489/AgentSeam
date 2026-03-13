@@ -353,6 +353,75 @@ describe("Anthropic pricing accuracy", () => {
     }
   });
 
+  // --- Multi-model live pricing verification ---
+  // One dated model name per unique pricing tier. Each sends a tiny request
+  // (max_tokens: 1) and verifies the DB cost matches the formula using that
+  // model's specific rates from pricing-data.json.
+
+  const MODELS_TO_TEST: {
+    model: string;
+    inputPerMTok: number;
+    cachedInputPerMTok: number;
+    outputPerMTok: number;
+  }[] = [
+    { model: "claude-3-haiku-20240307",     inputPerMTok: 0.25,  cachedInputPerMTok: 0.03,  outputPerMTok: 1.25  },
+    { model: "claude-3-5-haiku-20241022",   inputPerMTok: 0.80,  cachedInputPerMTok: 0.08,  outputPerMTok: 4.00  },
+    { model: "claude-haiku-4-5-20251001",   inputPerMTok: 1.00,  cachedInputPerMTok: 0.10,  outputPerMTok: 5.00  },
+    { model: "claude-sonnet-4-20250514",    inputPerMTok: 3.00,  cachedInputPerMTok: 0.30,  outputPerMTok: 15.00 },
+    { model: "claude-sonnet-4-5-20250929",  inputPerMTok: 3.00,  cachedInputPerMTok: 0.30,  outputPerMTok: 15.00 },
+    { model: "claude-sonnet-4-6-20260217",  inputPerMTok: 3.00,  cachedInputPerMTok: 0.30,  outputPerMTok: 15.00 },
+    { model: "claude-opus-4-20250514",      inputPerMTok: 15.00, cachedInputPerMTok: 1.50,  outputPerMTok: 75.00 },
+    { model: "claude-opus-4-1-20250805",    inputPerMTok: 15.00, cachedInputPerMTok: 1.50,  outputPerMTok: 75.00 },
+    { model: "claude-opus-4-5-20251101",    inputPerMTok: 5.00,  cachedInputPerMTok: 0.50,  outputPerMTok: 25.00 },
+    { model: "claude-opus-4-6-20260205",    inputPerMTok: 5.00,  cachedInputPerMTok: 0.50,  outputPerMTok: 25.00 },
+  ];
+
+  for (const { model, inputPerMTok, cachedInputPerMTok, outputPerMTok } of MODELS_TO_TEST) {
+    it(`${model} cost matches formula (input*${inputPerMTok} + output*${outputPerMTok})`, async () => {
+      const res = await fetch(`${BASE}/v1/messages`, {
+        method: "POST",
+        headers: anthropicAuthHeaders(),
+        body: JSON.stringify({
+          model,
+          max_tokens: 1,
+          messages: [{ role: "user", content: "Say ok" }],
+        }),
+      });
+
+      // Some models may not be available on the API tier; skip gracefully
+      if (res.status === 400 || res.status === 404) {
+        const errBody = await res.json().catch(() => ({}));
+        const errMsg = (errBody as { error?: { message?: string } }).error?.message ?? "";
+        console.log(`[pricing] ${model} not available (${res.status}): ${errMsg}`);
+        return;
+      }
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      const requestId = res.headers.get("x-request-id") ?? body.id;
+      const usage = body.usage;
+
+      const row = await waitForCostEvent(sql, requestId, 15_000, "anthropic");
+      expect(row).not.toBeNull();
+
+      const cacheRead = Number(usage.cache_read_input_tokens ?? 0);
+      const expected = Math.round(
+        usage.input_tokens * inputPerMTok +
+          cacheRead * cachedInputPerMTok +
+          usage.output_tokens * outputPerMTok,
+      );
+      const actualCost = Number(row!.cost_microdollars);
+
+      console.log(
+        `[pricing] ${model}: input=${usage.input_tokens}, output=${usage.output_tokens}, ` +
+          `cacheRead=${cacheRead}, expected=${expected}µ$, actual=${actualCost}µ$`,
+      );
+
+      expect(actualCost).toBe(expected);
+      expect(actualCost).toBeGreaterThan(0);
+    }, 30_000);
+  }
+
   it("no successful 200 response produces cost_microdollars == 0", async () => {
     const requestIds: string[] = [];
 
