@@ -5,6 +5,7 @@ import {
   getDailySpend,
   getKeyBreakdown,
   getModelBreakdown,
+  getProviderBreakdown,
   getTotals,
 } from "@/lib/cost-events/aggregate-cost-events";
 import { GET } from "./route";
@@ -16,6 +17,7 @@ vi.mock("@/lib/auth/session", () => ({
 vi.mock("@/lib/cost-events/aggregate-cost-events", () => ({
   getDailySpend: vi.fn(),
   getModelBreakdown: vi.fn(),
+  getProviderBreakdown: vi.fn(),
   getKeyBreakdown: vi.fn(),
   getTotals: vi.fn(),
 }));
@@ -23,6 +25,7 @@ vi.mock("@/lib/cost-events/aggregate-cost-events", () => ({
 const mockedResolveSessionUserId = vi.mocked(resolveSessionUserId);
 const mockedGetDailySpend = vi.mocked(getDailySpend);
 const mockedGetModelBreakdown = vi.mocked(getModelBreakdown);
+const mockedGetProviderBreakdown = vi.mocked(getProviderBreakdown);
 const mockedGetKeyBreakdown = vi.mocked(getKeyBreakdown);
 const mockedGetTotals = vi.mocked(getTotals);
 
@@ -35,6 +38,7 @@ const mockDailyData = [
 
 const mockModelData = [
   {
+    provider: "openai",
     model: "gpt-4o",
     totalCostMicrodollars: 6_000_000,
     requestCount: 15,
@@ -44,6 +48,7 @@ const mockModelData = [
     reasoningTokens: 0,
   },
   {
+    provider: "openai",
     model: "gpt-4o-mini",
     totalCostMicrodollars: 2_000_000,
     requestCount: 25,
@@ -52,6 +57,10 @@ const mockModelData = [
     cachedInputTokens: 1000,
     reasoningTokens: 0,
   },
+];
+
+const mockProviderData = [
+  { provider: "openai", totalCostMicrodollars: 8_000_000, requestCount: 40 },
 ];
 
 const mockKeyData = [
@@ -72,6 +81,7 @@ function setupMocks() {
   mockedResolveSessionUserId.mockResolvedValue(MOCK_USER_ID);
   mockedGetDailySpend.mockResolvedValue(mockDailyData);
   mockedGetModelBreakdown.mockResolvedValue(mockModelData);
+  mockedGetProviderBreakdown.mockResolvedValue(mockProviderData);
   mockedGetKeyBreakdown.mockResolvedValue(mockKeyData);
   mockedGetTotals.mockResolvedValue(mockTotals);
 }
@@ -91,6 +101,7 @@ describe("GET /api/cost-events/summary", () => {
     const body = await res.json();
     expect(body.daily).toEqual(mockDailyData);
     expect(body.models).toEqual(mockModelData);
+    expect(body.providers).toEqual(mockProviderData);
     expect(body.keys).toEqual(mockKeyData);
     expect(body.totals.totalCostMicrodollars).toBe(8_000_000);
     expect(body.totals.totalRequests).toBe(40);
@@ -154,7 +165,7 @@ describe("GET /api/cost-events/summary", () => {
     expect(res.status).toBe(401);
   });
 
-  it("calls all four aggregation functions in parallel", async () => {
+  it("calls all five aggregation functions in parallel", async () => {
     setupMocks();
 
     const req = new Request("http://localhost/api/cost-events/summary?period=7d");
@@ -162,6 +173,7 @@ describe("GET /api/cost-events/summary", () => {
 
     expect(mockedGetDailySpend).toHaveBeenCalledTimes(1);
     expect(mockedGetModelBreakdown).toHaveBeenCalledTimes(1);
+    expect(mockedGetProviderBreakdown).toHaveBeenCalledTimes(1);
     expect(mockedGetKeyBreakdown).toHaveBeenCalledTimes(1);
     expect(mockedGetTotals).toHaveBeenCalledTimes(1);
   });
@@ -170,6 +182,7 @@ describe("GET /api/cost-events/summary", () => {
     mockedResolveSessionUserId.mockResolvedValue(MOCK_USER_ID);
     mockedGetDailySpend.mockResolvedValue([]);
     mockedGetModelBreakdown.mockResolvedValue([]);
+    mockedGetProviderBreakdown.mockResolvedValue([]);
     mockedGetKeyBreakdown.mockResolvedValue([]);
     mockedGetTotals.mockResolvedValue({ totalCostMicrodollars: 0, totalRequests: 0 });
 
@@ -180,6 +193,7 @@ describe("GET /api/cost-events/summary", () => {
     const body = await res.json();
     expect(body.daily).toEqual([]);
     expect(body.models).toEqual([]);
+    expect(body.providers).toEqual([]);
     expect(body.keys).toEqual([]);
     expect(body.totals.totalCostMicrodollars).toBe(0);
     expect(body.totals.totalRequests).toBe(0);
@@ -189,6 +203,7 @@ describe("GET /api/cost-events/summary", () => {
     mockedResolveSessionUserId.mockResolvedValue(MOCK_USER_ID);
     mockedGetDailySpend.mockRejectedValue(new Error("DB connection lost"));
     mockedGetModelBreakdown.mockResolvedValue([]);
+    mockedGetProviderBreakdown.mockResolvedValue([]);
     mockedGetKeyBreakdown.mockResolvedValue([]);
     mockedGetTotals.mockResolvedValue({ totalCostMicrodollars: 0, totalRequests: 0 });
 
@@ -207,6 +222,7 @@ describe("GET /api/cost-events/summary", () => {
     mockedResolveSessionUserId.mockResolvedValue(customUserId);
     mockedGetDailySpend.mockResolvedValue([]);
     mockedGetModelBreakdown.mockResolvedValue([]);
+    mockedGetProviderBreakdown.mockResolvedValue([]);
     mockedGetKeyBreakdown.mockResolvedValue([]);
     mockedGetTotals.mockResolvedValue({ totalCostMicrodollars: 0, totalRequests: 0 });
 
@@ -215,6 +231,7 @@ describe("GET /api/cost-events/summary", () => {
 
     expect(mockedGetDailySpend).toHaveBeenCalledWith(customUserId, 7);
     expect(mockedGetModelBreakdown).toHaveBeenCalledWith(customUserId, 7);
+    expect(mockedGetProviderBreakdown).toHaveBeenCalledWith(customUserId, 7);
     expect(mockedGetKeyBreakdown).toHaveBeenCalledWith(customUserId, 7);
     expect(mockedGetTotals).toHaveBeenCalledWith(customUserId, 7);
   });

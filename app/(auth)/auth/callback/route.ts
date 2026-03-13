@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseClient } from "@/lib/auth/supabase";
 
 function sanitizeRedirectPath(raw: string | null): string {
-  const fallback = "/app/inbox";
+  const fallback = "/app/analytics";
   if (!raw) return fallback;
   if (!raw.startsWith("/") || raw.startsWith("//")) return fallback;
   return raw;

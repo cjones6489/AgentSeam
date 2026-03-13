@@ -25,8 +25,8 @@ const navSections: { label: string; items: NavItem[] }[] = [
     label: "FinOps",
     items: [
       { href: "/app/budgets", label: "Budgets", icon: DollarSign },
-      { href: "/app/activity", label: "Activity", icon: Activity },
       { href: "/app/analytics", label: "Analytics", icon: BarChart3 },
+      { href: "/app/activity", label: "Activity", icon: Activity },
     ],
   },
   {
@@ -45,7 +45,7 @@ export function Sidebar() {
       <div className="flex h-14 items-center gap-2 border-b border-border/50 px-5">
         <Shield className="h-4 w-4 text-primary" />
         <Link
-          href="/app/inbox"
+          href="/app/analytics"
           className="text-sm font-semibold tracking-tight text-foreground"
         >
           AgentSeam

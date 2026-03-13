@@ -41,7 +41,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/app/inbox");
+      router.push("/app/analytics");
       router.refresh();
     } catch {
       setError("An unexpected error occurred.");

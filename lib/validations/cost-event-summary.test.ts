@@ -78,6 +78,7 @@ describe("dailySpendSchema", () => {
 
 describe("modelBreakdownSchema", () => {
   const validModel = {
+    provider: "openai",
     model: "gpt-4o",
     totalCostMicrodollars: 10_000_000,
     requestCount: 42,
@@ -170,6 +171,7 @@ describe("costSummaryResponseSchema", () => {
     daily: [{ date: "2026-03-07", totalCostMicrodollars: 1_000_000 }],
     models: [
       {
+        provider: "openai",
         model: "gpt-4o",
         totalCostMicrodollars: 1_000_000,
         requestCount: 10,
@@ -178,6 +180,9 @@ describe("costSummaryResponseSchema", () => {
         cachedInputTokens: 0,
         reasoningTokens: 0,
       },
+    ],
+    providers: [
+      { provider: "openai", totalCostMicrodollars: 1_000_000, requestCount: 10 },
     ],
     keys: [
       {
@@ -206,11 +211,13 @@ describe("costSummaryResponseSchema", () => {
     const result = costSummaryResponseSchema.parse({
       daily: [],
       models: [],
+      providers: [],
       keys: [],
       totals: { totalCostMicrodollars: 0, totalRequests: 0, period: "7d" },
     });
     expect(result.daily).toHaveLength(0);
     expect(result.models).toHaveLength(0);
+    expect(result.providers).toHaveLength(0);
     expect(result.keys).toHaveLength(0);
   });
 
@@ -227,6 +234,7 @@ describe("costSummaryResponseSchema", () => {
     expect(() =>
       costSummaryResponseSchema.parse({
         models: validResponse.models,
+        providers: validResponse.providers,
         keys: validResponse.keys,
         totals: validResponse.totals,
       }),

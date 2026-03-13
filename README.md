@@ -1,139 +1,186 @@
 # AgentSeam
 
-AgentSeam is a lightweight approval layer for risky AI agent actions.
+**The FinOps layer for AI agents.** Track every dollar your agents spend on LLM
+tokens, enforce hard budget ceilings, and get the receipts to prove it.
 
-It sits between an agent and a risky side effect, turns that action into a proposed action, presents it for approval, and only allows execution after a human decision.
+## The problem
 
-## How it works
+AI agents call LLMs autonomously, at scale, across multiple providers. Without
+real-time cost controls, a misconfigured loop or runaway agent can burn through
+thousands of dollars before anyone notices. Existing tools either gate budget
+enforcement behind enterprise pricing (Portkey), require Docker + Postgres +
+Redis + YAML to self-host (LiteLLM), or just exited the market entirely
+(Helicone → acquired by Mintlify, March 2026).
 
-```text
-Agent Runtime                MCP Client (Claude, Cursor, ...)
-    │                              │                  │
-    │                              ▼                  ▼
-    │                     MCP Server adapter    MCP Proxy (gates
-    │                     (propose_action,       upstream tools)
-    ▼                      check_action)              │
-AgentSeam SDK ────────────────────┼───────────────────┘
-    │                             │
-    │         HTTPS               │
-    ▼                             ▼
-┌──────────────────────────────────────┐
-│        Next.js API / Backend         │
-│  POST /api/actions                   │
-│  GET  /api/actions/:id               │
-│  POST /api/actions/:id/approve       │
-│  POST /api/actions/:id/reject        │
-│  POST /api/actions/:id/result        │
-└──────────────┬───────────────────────┘
-               │
-               ▼
-┌──────────────────────────────────────┐
-│         Supabase Postgres            │
-└──────────────┬───────────────────────┘
-               │
-               ▼
-┌──────────────────────────────────────┐
-│       Approval Dashboard (web UI)    │
-│  Inbox · Action Detail · History     │
-└──────────────────────────────────────┘
+## The fix: one environment variable
+
+```bash
+# Before
+OPENAI_BASE_URL=https://api.openai.com/v1
+
+# After
+OPENAI_BASE_URL=https://proxy.agentseam.com/v1
+```
+
+That's it. Your existing code, existing SDK, existing streaming — all works
+identically. No package to install, no client to wrap, no config files. One
+environment variable and you have cost tracking + budget enforcement.
+
+Works the same for Anthropic:
+
+```bash
+# Before
+ANTHROPIC_BASE_URL=https://api.anthropic.com
+
+# After
+ANTHROPIC_BASE_URL=https://proxy.agentseam.com/anthropic
+```
+
+## What you get
+
+- **Real-time cost tracking** — every request logged with model, tokens, cost
+  in microdollars, and provider attribution
+- **Hard budget enforcement** — set spending ceilings per API key. The proxy
+  blocks requests that would exceed the budget. No soft limits, no warnings —
+  hard stops.
+- **Multi-provider support** — OpenAI and Anthropic today, more coming based on
+  demand
+- **Zero latency overhead** — the proxy streams responses through as they
+  arrive; cost calculation happens asynchronously
+- **Dashboard** — analytics, per-model and per-key cost breakdown, daily spend
+  charts, activity log
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                   Developer / Agent                       │
+│  Uses OpenAI/Anthropic SDK with base URL → AgentSeam     │
+└────────────┬─────────────────────────────────────────────┘
+             │ LLM API calls (unchanged)
+             ▼
+┌──────────────────────────────┐
+│  AgentSeam Proxy             │
+│  (Cloudflare Workers)        │
+│  Stream → tee → log          │
+│  Budget check (Upstash Redis)│
+│  Cost calc per provider      │
+└────────────┬─────────────────┘
+             │
+             ▼
+┌──────────────────────────────────────────────────────────┐
+│  Supabase Postgres — cost ledger, budgets, API keys      │
+│  Upstash Redis — atomic budget state (Lua scripts)       │
+└────────────┬─────────────────────────────────────────────┘
+             │
+             ▼
+┌──────────────────────────────────────────────────────────┐
+│  Dashboard (Next.js on Vercel)                            │
+│  Analytics · Activity · Budgets · Settings · API Keys    │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ## Quickstart
 
-Prerequisites: Node 18+, pnpm, a Supabase project.
+1. **Sign up** at [agentseam.com](https://agentseam.com) and create an API key
+   in Settings
+2. **Set two environment variables** in your agent:
+   ```bash
+   OPENAI_BASE_URL=https://proxy.agentseam.com/v1
+   OPENAI_API_KEY=sk-your-openai-key   # your real provider key, unchanged
+   ```
+3. **Run your agent** — costs appear in the dashboard within seconds
+
+## Pricing
+
+| Tier | Monthly Price | Proxied Spend Cap | Budgets | Retention |
+|---|---|---|---|---|
+| **Free** | $0 | $1,000/mo | 1 | 7 days |
+| **Pro** | $49/mo | $50,000/mo | Unlimited | 30 days |
+| **Team** | $199/mo | $250,000/mo | Unlimited | 90 days |
+| **Enterprise** | Custom | Unlimited | Unlimited | Custom |
+
+Zero markup on LLM API calls. The proxy is pass-through on pricing — we charge
+for the metering, enforcement, and intelligence layer, never for the tokens.
+
+## Competitive comparison
+
+| Feature | AgentSeam | Portkey | LiteLLM |
+|---|---|---|---|
+| Setup | 1 env var | 1 env var | Docker + PG + Redis + YAML |
+| Budget enforcement | All tiers | Enterprise only | Self-hosted only |
+| Pricing | From $0 | From $49 | Free (OSS) + support tiers |
+| Infrastructure | Hosted | Hosted | Self-managed |
+| Open issues | — | — | 800+ |
+
+## Project structure
+
+```
+apps/proxy/        Cloudflare Worker — the LLM proxy
+app/               Next.js dashboard (routes, layouts, API handlers)
+components/        UI components (shadcn/ui)
+lib/               Business logic, DB, auth, validations, cost engine
+packages/
+  cost-engine/     Shared pricing data and cost calculation
+  db/              Drizzle ORM schema and queries
+  sdk/             @agentseam/sdk — TypeScript client (approval layer)
+  mcp-server/      @agentseam/mcp-server — MCP server adapter
+  mcp-proxy/       @agentseam/mcp-proxy — MCP tool gating proxy
+drizzle/           Schema migrations
+docs/              Architecture, roadmap, competitive analysis
+```
+
+## Development
+
+Prerequisites: Node 18+, pnpm.
 
 ```bash
 git clone https://github.com/cjones6489/AgentSeam.git
 cd AgentSeam
 pnpm install
-
-# Copy .env.example to .env.local and fill in your Supabase credentials
-cp .env.example .env.local
-
-# Push the database schema to Supabase
-pnpm db:push
-
-# Start the dev server
-pnpm dev
+cp .env.example .env.local  # fill in credentials
+pnpm db:push                # push schema to Supabase
+pnpm dev                    # start dashboard dev server
 ```
 
-Then open <http://localhost:3000>, sign up, and create an API key in **Settings**.
-
-To run a demo end-to-end:
+For the proxy:
 
 ```bash
-# In a second terminal — pick any demo:
-AGENTSEAM_API_KEY=ask_your-key pnpm tsx packages/sdk/examples/demo-send-email.ts
-AGENTSEAM_API_KEY=ask_your-key pnpm tsx packages/sdk/examples/demo-http-post.ts
-AGENTSEAM_API_KEY=ask_your-key pnpm tsx packages/sdk/examples/demo-shell-command.ts
-```
-
-Approve the action at <http://localhost:3000/app/inbox>. See [`packages/sdk/examples/`](packages/sdk/examples/) for details on each demo.
-
-## Project structure
-
-```text
-app/            Next.js routes, layouts, API route handlers
-components/     UI components (ui/, dashboard/, actions/, providers/)
-lib/            Business logic, DB, auth, validations, queries, utils
-packages/
-  sdk/          @agentseam/sdk — TypeScript client for agents
-  mcp-server/   @agentseam/mcp-server — MCP server with propose/check tools
-  mcp-proxy/    @agentseam/mcp-proxy — stdio proxy that gates upstream MCP tools
-drizzle/        Schema migrations
-docs/           Architecture, roadmap, ADRs
-scripts/        E2E smoke tests and experiment scripts
+cd apps/proxy
+cp .dev.vars.example .dev.vars  # fill in provider keys
+npx wrangler dev                # start proxy dev server
 ```
 
 ## Commands
 
 | Command | Description |
 |---|---|
-| `pnpm dev` | Start the Next.js dev server |
-| `pnpm build` | Production build |
-| `pnpm test` | Run root unit tests (Vitest) |
-| `pnpm e2e` | Run E2E smoke tests against a running server |
+| `pnpm dev` | Start the dashboard dev server |
+| `pnpm build` | Production build (db + Next.js) |
+| `pnpm test` | Run unit tests (Vitest) |
 | `pnpm lint` | ESLint |
 | `pnpm typecheck` | TypeScript type check |
-| `pnpm sdk:build` | Build the SDK package |
-| `pnpm sdk:test` | Run SDK unit tests |
-| `pnpm mcp:build` | Build the MCP server package |
-| `pnpm mcp:test` | Run MCP server tests |
-| `pnpm mcp-proxy:build` | Build the MCP proxy package |
-| `pnpm mcp-proxy:test` | Run MCP proxy tests |
-| `pnpm db:push` | Push Drizzle schema to database |
+| `pnpm db:push` | Push Drizzle schema to Supabase |
 | `pnpm db:generate` | Generate Drizzle migrations |
 | `pnpm db:studio` | Open Drizzle Studio |
 
-## Packages
+## Stack
 
-- **[@agentseam/sdk](packages/sdk/)** — TypeScript client: `proposeAndWait`, `createAction`, `getAction`, `waitForDecision`, `markResult`. See [SDK README](packages/sdk/README.md).
-- **[@agentseam/mcp-server](packages/mcp-server/)** — MCP server exposing `propose_action` and `check_action` tools to MCP clients. See [MCP Server README](packages/mcp-server/README.md).
-- **[@agentseam/mcp-proxy](packages/mcp-proxy/)** — Stdio proxy that sits between an LLM and any upstream MCP server, gating risky tool calls through AgentSeam approval. See [MCP Proxy README](packages/mcp-proxy/README.md).
+- **Proxy:** Cloudflare Workers (TypeScript)
+- **Dashboard:** Next.js App Router on Vercel
+- **Database:** Supabase Postgres via Drizzle ORM
+- **Budget state:** Upstash Redis (atomic Lua scripts)
+- **UI:** Tailwind CSS + shadcn/ui
+- **Validation:** Zod
+- **Package manager:** pnpm
 
 ## Documentation
 
-- [docs/architecture.md](docs/architecture.md) — system overview, boundaries, packages, and state machine
-- [docs/roadmap.md](docs/roadmap.md) — completed phases and planned features
-- [docs/v1-build-contract.md](docs/v1-build-contract.md) — original v1 implementation target (completed)
-- [docs/repo-guide.md](docs/repo-guide.md) — repo organization and file placement guidance
-- [docs/adr/](docs/adr/) — architecture decision records
-- [agentseam-project-outline.txt](agentseam-project-outline.txt) — original product brief and planning archive
+- [docs/finops-pivot-roadmap.md](docs/finops-pivot-roadmap.md) — master roadmap
+- [docs/competitive-landscape-march-2026.md](docs/competitive-landscape-march-2026.md) — competitive analysis
+- [docs/finops-pivot-tech-audit.md](docs/finops-pivot-tech-audit.md) — technology audit
+- [docs/architecture.md](docs/architecture.md) — system architecture
 
-## Current status
+## License
 
-The core approval loop is proven and working end-to-end. Completed:
-
-- Full action lifecycle API with explicit state machine and optimistic locking
-- Approval dashboard: inbox, action detail, history, settings
-- Supabase auth (email/password) with API key authentication for SDK routes
-- TypeScript SDK with polling-based approval wait
-- MCP server adapter for Claude Desktop, Cursor, and other MCP clients
-- MCP proxy for transparently gating any upstream MCP server's tools
-- Action expiration with configurable TTL and lazy check-on-read
-- Slack notifications with interactive approve/reject buttons
-- 170+ tests (unit, SDK, MCP proxy, E2E smoke)
-
-## Stack
-
-Next.js App Router, TypeScript, Tailwind CSS, shadcn/ui, Supabase (auth + Postgres), Drizzle ORM, TanStack Query, Zod, pnpm workspace.
+Private — not yet open source.

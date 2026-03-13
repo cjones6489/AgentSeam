@@ -9,11 +9,12 @@ import { isActionExpired } from "@/lib/actions/expiration";
 import { assertActionTransition } from "@/lib/actions/transitions";
 import { getDb } from "@/lib/db/client";
 import { actions } from "@agentseam/db";
+import type { ActionStatus } from "@/lib/utils/status";
 
 export async function resolveAction(
   actionId: string,
   ownerUserId: string,
-  targetStatus: string,
+  targetStatus: ActionStatus,
   setFields: Record<string, unknown>,
 ) {
   const db = getDb();
