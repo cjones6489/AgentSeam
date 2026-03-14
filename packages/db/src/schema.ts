@@ -136,3 +136,22 @@ export const costEvents = pgTable("cost_events", {
 
 export type CostEventRow = typeof costEvents.$inferSelect;
 export type NewCostEventRow = typeof costEvents.$inferInsert;
+
+export const subscriptions = pgTable("subscriptions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull().unique(),
+  stripeCustomerId: text("stripe_customer_id").notNull(),
+  stripeSubscriptionId: text("stripe_subscription_id").notNull(),
+  tier: text("tier").notNull(),
+  status: text("status").notNull(),
+  currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("subscriptions_stripe_customer_id_idx").on(table.stripeCustomerId),
+]);
+
+export type SubscriptionRow = typeof subscriptions.$inferSelect;
+export type NewSubscriptionRow = typeof subscriptions.$inferInsert;

@@ -1,0 +1,95 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { getTierForUser, tierFromPriceId, isValidPriceId, TIERS } from "./tiers";
+
+describe("getTierForUser", () => {
+  it("returns 'free' when subscription is null", () => {
+    expect(getTierForUser(null)).toBe("free");
+  });
+
+  it("returns 'free' when status is not active or past_due", () => {
+    expect(getTierForUser({ tier: "pro", status: "canceled" })).toBe("free");
+    expect(getTierForUser({ tier: "team", status: "trialing" })).toBe("free");
+    expect(getTierForUser({ tier: "pro", status: "incomplete" })).toBe("free");
+  });
+
+  it("returns the tier when status is active", () => {
+    expect(getTierForUser({ tier: "pro", status: "active" })).toBe("pro");
+    expect(getTierForUser({ tier: "team", status: "active" })).toBe("team");
+  });
+
+  it("returns the tier when status is past_due (grace period)", () => {
+    expect(getTierForUser({ tier: "pro", status: "past_due" })).toBe("pro");
+    expect(getTierForUser({ tier: "team", status: "past_due" })).toBe("team");
+  });
+});
+
+describe("tierFromPriceId", () => {
+  beforeEach(() => {
+    vi.stubEnv("STRIPE_PRO_PRICE_ID", "price_pro_test");
+    vi.stubEnv("STRIPE_TEAM_PRICE_ID", "price_team_test");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("returns 'pro' for the pro price ID", () => {
+    expect(tierFromPriceId("price_pro_test")).toBe("pro");
+  });
+
+  it("returns 'team' for the team price ID", () => {
+    expect(tierFromPriceId("price_team_test")).toBe("team");
+  });
+
+  it("returns null for an unrecognized price ID", () => {
+    expect(tierFromPriceId("price_unknown")).toBeNull();
+  });
+
+  it("returns null for an empty string", () => {
+    expect(tierFromPriceId("")).toBeNull();
+  });
+});
+
+describe("isValidPriceId", () => {
+  beforeEach(() => {
+    vi.stubEnv("STRIPE_PRO_PRICE_ID", "price_pro_test");
+    vi.stubEnv("STRIPE_TEAM_PRICE_ID", "price_team_test");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("returns true for valid price IDs", () => {
+    expect(isValidPriceId("price_pro_test")).toBe(true);
+    expect(isValidPriceId("price_team_test")).toBe(true);
+  });
+
+  it("returns false for invalid price IDs", () => {
+    expect(isValidPriceId("price_invalid")).toBe(false);
+    expect(isValidPriceId("")).toBe(false);
+  });
+});
+
+describe("TIERS", () => {
+  it("has correct structure for free tier", () => {
+    expect(TIERS.free.maxBudgets).toBe(1);
+    expect(TIERS.free.price).toBe(0);
+    expect(TIERS.free.retentionDays).toBe(7);
+  });
+
+  it("has unlimited budgets for paid tiers", () => {
+    expect(TIERS.pro.maxBudgets).toBe(Infinity);
+    expect(TIERS.team.maxBudgets).toBe(Infinity);
+  });
+
+  it("has increasing spend caps", () => {
+    expect(TIERS.free.spendCapMicrodollars).toBeLessThan(
+      TIERS.pro.spendCapMicrodollars,
+    );
+    expect(TIERS.pro.spendCapMicrodollars).toBeLessThan(
+      TIERS.team.spendCapMicrodollars,
+    );
+  });
+});

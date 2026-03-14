@@ -8,6 +8,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/app/budgets": "Budgets",
   "/app/activity": "Activity",
   "/app/analytics": "Analytics",
+  "/app/billing": "Billing",
   "/app/settings": "Settings",
 };
 

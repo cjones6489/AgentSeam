@@ -29,7 +29,12 @@ function getRatelimit(): Ratelimit | null {
 
 export async function proxy(request: NextRequest) {
   // --- Rate limiting for API routes ---
-  if (request.nextUrl.pathname.startsWith("/api/")) {
+  // Stripe webhooks are exempt — authenticated via signature verification, and
+  // rate limiting could cause 429s that trigger cascading Stripe retries.
+  if (
+    request.nextUrl.pathname.startsWith("/api/") &&
+    !request.nextUrl.pathname.startsWith("/api/stripe/webhook")
+  ) {
     const limiter = getRatelimit();
     if (limiter) {
       const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
@@ -63,8 +68,10 @@ export async function proxy(request: NextRequest) {
   }
 
   // --- CSRF: Origin validation for state-changing API requests ---
+  // Stripe webhooks are exempt — authenticated via signature verification, not origin.
   if (
     request.nextUrl.pathname.startsWith("/api/") &&
+    !request.nextUrl.pathname.startsWith("/api/stripe/webhook") &&
     ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)
   ) {
     const origin = request.headers.get("origin") ?? request.headers.get("referer");

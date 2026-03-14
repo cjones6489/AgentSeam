@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { Activity, BarChart3, Inbox, Clock, DollarSign, Settings } from "lucide-react";
+import { Activity, BarChart3, CreditCard, Inbox, Clock, DollarSign, Settings } from "lucide-react";
 
 import {
   CommandDialog,
@@ -24,6 +24,7 @@ const NAV_ITEMS = [
   { label: "Budgets", href: "/app/budgets", icon: DollarSign, shortcut: "G B" },
   { label: "Analytics", href: "/app/analytics", icon: BarChart3, shortcut: "G N" },
   { label: "Activity", href: "/app/activity", icon: Activity, shortcut: "G A" },
+  { label: "Billing", href: "/app/billing", icon: CreditCard, shortcut: "G L" },
   { label: "Settings", href: "/app/settings", icon: Settings, shortcut: "G S" },
 ];
 
