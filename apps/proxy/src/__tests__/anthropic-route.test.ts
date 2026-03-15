@@ -31,6 +31,16 @@ vi.mock("@nullspend/cost-engine", () => ({
   costComponent: vi.fn().mockReturnValue(0),
 }));
 
+const mockAuthenticateRequest = vi.fn();
+vi.mock("../lib/auth.js", () => ({
+  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
+  unauthorizedResponse: () =>
+    Response.json(
+      { error: "unauthorized", message: "Invalid or missing authentication header" },
+      { status: 401 },
+    ),
+}));
+
 import { handleAnthropicMessages } from "../routes/anthropic.js";
 
 function makeRequest(
@@ -94,6 +104,12 @@ describe("handleAnthropicMessages", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
+    mockAuthenticateRequest.mockReset();
+    mockAuthenticateRequest.mockResolvedValue({
+      userId: "user-1",
+      keyId: "key-1",
+      method: "platform_key",
+    });
   });
 
   afterEach(() => {
@@ -101,24 +117,13 @@ describe("handleAnthropicMessages", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns 401 when X-NullSpend-Auth is missing", async () => {
-    const request = new Request("http://localhost/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-    const res = await handleAnthropicMessages(request, makeEnv(), {
+  it("returns 401 when authentication fails", async () => {
+    mockAuthenticateRequest.mockResolvedValue(null);
+    const request = makeRequest({
       model: "claude-sonnet-4-20250514",
       max_tokens: 100,
       messages: [{ role: "user", content: "hi" }],
     });
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 401 when X-NullSpend-Auth is invalid", async () => {
-    const request = makeRequest(
-      { model: "claude-sonnet-4-20250514", max_tokens: 100, messages: [{ role: "user", content: "hi" }] },
-      { "X-NullSpend-Auth": "wrong-key" },
-    );
     const res = await handleAnthropicMessages(request, makeEnv(), {
       model: "claude-sonnet-4-20250514",
       max_tokens: 100,

@@ -83,6 +83,16 @@ vi.mock("@upstash/redis/cloudflare", () => ({
   Redis: { fromEnv: vi.fn(() => ({})) },
 }));
 
+const mockAuthenticateRequest = vi.fn();
+vi.mock("../lib/auth.js", () => ({
+  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
+  unauthorizedResponse: () =>
+    Response.json(
+      { error: "unauthorized", message: "Invalid or missing authentication header" },
+      { status: 401 },
+    ),
+}));
+
 vi.mock("../lib/sanitize-upstream-error.js", () => ({
   sanitizeUpstreamError: vi.fn().mockResolvedValue(JSON.stringify({
     error: { type: "upstream_error", message: "bad" }
@@ -150,6 +160,12 @@ describe("upstream timeout / error — reservation cleanup", () => {
     mockUpdateBudgetSpend.mockResolvedValue(undefined);
     mockEstimateMaxCost.mockReturnValue(500_000);
     mockCalculateOpenAICost.mockReturnValue({ costMicrodollars: 42_000 });
+    mockAuthenticateRequest.mockReset();
+    mockAuthenticateRequest.mockResolvedValue({
+      userId: "user-uuid-456",
+      keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001",
+      method: "api_key",
+    });
   });
 
   afterEach(() => {

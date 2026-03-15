@@ -42,6 +42,16 @@ vi.mock("../lib/budget-reconcile.js", () => ({
   reconcileReservation: (...args: unknown[]) => mockReconcileReservation(...args),
 }));
 
+const mockAuthenticateRequest = vi.fn();
+vi.mock("../lib/auth.js", () => ({
+  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
+  unauthorizedResponse: () =>
+    Response.json(
+      { error: "unauthorized", message: "Invalid or missing authentication header" },
+      { status: 401 },
+    ),
+}));
+
 vi.mock("@upstash/redis/cloudflare", () => ({
   Redis: { fromEnv: () => ({}) },
 }));
@@ -82,18 +92,26 @@ describe("handleMcpBudgetCheck", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     mockLookupBudgets.mockReset();
     mockCheckAndReserve.mockReset();
+    mockAuthenticateRequest.mockReset();
+    // Default: authenticated as platform key user
+    mockAuthenticateRequest.mockResolvedValue({
+      userId: "user-1",
+      keyId: "key-1",
+      method: "platform_key",
+    });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("returns 401 when auth header is missing", async () => {
+  it("returns 401 when auth fails", async () => {
+    mockAuthenticateRequest.mockResolvedValue(null);
     const request = makeRequest("/v1/mcp/budget/check", {
       toolName: "run_query",
       serverName: "supabase",
       estimateMicrodollars: 10000,
-    }, { "X-NullSpend-Auth": "" });
+    });
     const env = makeEnv();
 
     const response = await handleMcpBudgetCheck(request, env, {
@@ -106,6 +124,7 @@ describe("handleMcpBudgetCheck", () => {
   });
 
   it("returns 401 when auth header is wrong", async () => {
+    mockAuthenticateRequest.mockResolvedValue(null);
     const request = makeRequest("/v1/mcp/budget/check", {}, {
       "X-NullSpend-Auth": "wrong-key",
     });
@@ -339,7 +358,12 @@ describe("handleMcpBudgetCheck", () => {
     expect(response.status).toBe(503);
   });
 
-  it("passes userId and keyId from headers to lookupBudgets", async () => {
+  it("passes userId and keyId from auth result to lookupBudgets", async () => {
+    mockAuthenticateRequest.mockResolvedValue({
+      userId: "user-abc",
+      keyId: "key-xyz",
+      method: "platform_key",
+    });
     mockLookupBudgets.mockResolvedValue([]);
 
     const request = makeRequest("/v1/mcp/budget/check", {}, {
@@ -357,8 +381,7 @@ describe("handleMcpBudgetCheck", () => {
     expect(mockLookupBudgets).toHaveBeenCalledWith(
       expect.anything(),
       env.HYPERDRIVE.connectionString,
-      "key-xyz",
-      "user-abc",
+      { keyId: "key-xyz", userId: "user-abc" },
     );
   });
 });
@@ -370,16 +393,21 @@ describe("handleMcpEvents", () => {
     mockLogCostEvent.mockReset();
     mockReconcileReservation.mockReset();
     mockLookupBudgets.mockReset();
+    mockAuthenticateRequest.mockReset();
+    mockAuthenticateRequest.mockResolvedValue({
+      userId: "user-1",
+      keyId: "key-1",
+      method: "platform_key",
+    });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("returns 401 when auth header is wrong", async () => {
-    const request = makeRequest("/v1/mcp/events", {}, {
-      "X-NullSpend-Auth": "wrong",
-    });
+  it("returns 401 when auth fails", async () => {
+    mockAuthenticateRequest.mockResolvedValue(null);
+    const request = makeRequest("/v1/mcp/events", {});
     const env = makeEnv();
 
     const response = await handleMcpEvents(request, env, {

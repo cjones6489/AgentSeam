@@ -1,4 +1,16 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
+
+// Mock pg and db-semaphore so that importing auth.ts (which imports api-key-auth.ts) works
+vi.mock("pg", () => ({
+  Client: function MockClient() {
+    return { connect: vi.fn(), end: vi.fn(), on: vi.fn(), query: vi.fn() };
+  },
+}));
+
+vi.mock("../lib/db-semaphore.js", () => ({
+  withDbConnection: vi.fn(async (fn: () => Promise<unknown>) => fn()),
+}));
+
 import { validatePlatformKey } from "../lib/auth.js";
 
 // crypto.subtle.timingSafeEqual is a CF Workers API; polyfill for Node.js tests

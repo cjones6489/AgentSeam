@@ -30,9 +30,10 @@ async function applyRateLimit(
       return rateLimitResponse(ipResult);
     }
 
-    // Per-key rate limit (if key-id header is present)
-    const keyId = request.headers.get("x-nullspend-key-id");
-    if (keyId && keyId.length <= 128) {
+    // Per-key rate limit: use API key (new path) or key-id header (legacy)
+    const rateLimitKey = request.headers.get("x-nullspend-key")
+      ?? request.headers.get("x-nullspend-key-id");
+    if (rateLimitKey && rateLimitKey.length <= 128) {
       const keyRateLimit =
         Number((env as Record<string, unknown>).PROXY_KEY_RATE_LIMIT) ||
         DEFAULT_KEY_RATE_LIMIT;
@@ -41,7 +42,7 @@ async function applyRateLimit(
         limiter: Ratelimit.slidingWindow(keyRateLimit, "1 m"),
         prefix: "nullspend:proxy:rl:key",
       });
-      const keyResult = await keyLimiter.limit(keyId);
+      const keyResult = await keyLimiter.limit(rateLimitKey);
       if (!keyResult.success) {
         return rateLimitResponse(keyResult);
       }

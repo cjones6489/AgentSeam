@@ -101,7 +101,7 @@ describe("lookupBudgets", () => {
 
   it("returns empty array when both keyId and userId are null", async () => {
     const redis = makeFakeRedis() as any;
-    const result = await lookupBudgets(redis, CONNECTION_STRING, null, null);
+    const result = await lookupBudgets(redis, CONNECTION_STRING, { keyId: null, userId: null });
     expect(result).toEqual([]);
     expect(redis.pipeline).not.toHaveBeenCalled();
   });
@@ -112,7 +112,7 @@ describe("lookupBudgets", () => {
       null, // noneKey
     ]) as any;
 
-    const result = await lookupBudgets(redis, CONNECTION_STRING, "key-1", null);
+    const result = await lookupBudgets(redis, CONNECTION_STRING, { keyId: "key-1", userId: null });
 
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
@@ -133,7 +133,7 @@ describe("lookupBudgets", () => {
       "1", // noneKey marker
     ]) as any;
 
-    const result = await lookupBudgets(redis, CONNECTION_STRING, "key-no-budget", null);
+    const result = await lookupBudgets(redis, CONNECTION_STRING, { keyId: "key-no-budget", userId: null });
 
     expect(result).toHaveLength(0);
     expect(mockConnect).not.toHaveBeenCalled();
@@ -147,7 +147,7 @@ describe("lookupBudgets", () => {
       null,
     ]) as any;
 
-    const result = await lookupBudgets(redis, CONNECTION_STRING, "key-1", "user-1");
+    const result = await lookupBudgets(redis, CONNECTION_STRING, { keyId: "key-1", userId: "user-1" });
 
     expect(result).toHaveLength(2);
     expect(mockConnect).not.toHaveBeenCalled();
@@ -170,7 +170,7 @@ describe("lookupBudgets", () => {
     };
     mockSelectChain.where.mockResolvedValueOnce([pgRow]);
 
-    const result = await lookupBudgets(redis, CONNECTION_STRING, "key-miss", null);
+    const result = await lookupBudgets(redis, CONNECTION_STRING, { keyId: "key-miss", userId: null });
 
     expect(mockConnect).toHaveBeenCalled();
     expect(mockPopulateCache).toHaveBeenCalledWith(
@@ -191,7 +191,7 @@ describe("lookupBudgets", () => {
     const redis = makeFakeRedis([null, null]) as any;
     mockSelectChain.where.mockResolvedValueOnce([]);
 
-    const result = await lookupBudgets(redis, CONNECTION_STRING, "key-none", null);
+    const result = await lookupBudgets(redis, CONNECTION_STRING, { keyId: "key-none", userId: null });
 
     expect(result).toHaveLength(0);
     expect(redis.set).toHaveBeenCalledWith(
@@ -224,7 +224,7 @@ describe("lookupBudgets", () => {
     };
     mockSelectChain.where.mockResolvedValueOnce([pgRow]);
 
-    const result = await lookupBudgets(redis, CONNECTION_STRING, "key-cached", "user-miss");
+    const result = await lookupBudgets(redis, CONNECTION_STRING, { keyId: "key-cached", userId: "user-miss" });
 
     expect(result).toHaveLength(2);
     expect(result[0].entityType).toBe("api_key");
@@ -239,7 +239,7 @@ describe("lookupBudgets", () => {
     mockConnect.mockRejectedValueOnce(new Error("ECONNREFUSED"));
 
     await expect(
-      lookupBudgets(redis, CONNECTION_STRING, "key-1", null),
+      lookupBudgets(redis, CONNECTION_STRING, { keyId: "key-1", userId: null }),
     ).rejects.toThrow("ECONNREFUSED");
   });
 
@@ -262,7 +262,7 @@ describe("lookupBudgets", () => {
     mockPopulateCache.mockRejectedValueOnce(new Error("Redis EVALSHA failed"));
 
     await expect(
-      lookupBudgets(redis, CONNECTION_STRING, "key-1", null),
+      lookupBudgets(redis, CONNECTION_STRING, { keyId: "key-1", userId: null }),
     ).rejects.toThrow("Redis EVALSHA failed");
     expect(mockEnd).toHaveBeenCalled();
   });
@@ -275,7 +275,7 @@ describe("lookupBudgets", () => {
 
     mockSelectChain.where.mockResolvedValueOnce([]);
 
-    const result = await lookupBudgets(redis, CONNECTION_STRING, "key-corrupt", null);
+    const result = await lookupBudgets(redis, CONNECTION_STRING, { keyId: "key-corrupt", userId: null });
 
     expect(result).toHaveLength(0);
     expect(mockConnect).toHaveBeenCalled();
@@ -292,7 +292,7 @@ describe("lookupBudgets", () => {
       null,
     ]) as any;
 
-    const result = await lookupBudgets(redis, CONNECTION_STRING, "key-str", null);
+    const result = await lookupBudgets(redis, CONNECTION_STRING, { keyId: "key-str", userId: null });
 
     expect(result[0].maxBudget).toBe(50_000_000);
     expect(result[0].spend).toBe(10_000_000);
@@ -306,7 +306,7 @@ describe("lookupBudgets", () => {
     mockSelectChain.where.mockRejectedValueOnce(new Error("query timeout"));
 
     await expect(
-      lookupBudgets(redis, CONNECTION_STRING, "key-err", null),
+      lookupBudgets(redis, CONNECTION_STRING, { keyId: "key-err", userId: null }),
     ).rejects.toThrow("query timeout");
 
     expect(mockEnd).toHaveBeenCalled();

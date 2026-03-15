@@ -85,6 +85,16 @@ vi.mock("@upstash/redis/cloudflare", () => ({
   },
 }));
 
+const mockAuthenticateRequest = vi.fn();
+vi.mock("../lib/auth.js", () => ({
+  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
+  unauthorizedResponse: () =>
+    Response.json(
+      { error: "unauthorized", message: "Invalid or missing authentication header" },
+      { status: 401 },
+    ),
+}));
+
 import { handleChatCompletions } from "../routes/openai.js";
 
 // --- Test Helpers ---
@@ -175,10 +185,16 @@ describe("Budget Enforcement", () => {
     mockReconcile.mockReset();
     mockEstimateMaxCost.mockReset();
     mockUpdateBudgetSpend.mockReset();
+    mockAuthenticateRequest.mockReset();
 
     mockReconcile.mockResolvedValue({ status: "reconciled", spends: {} });
     mockUpdateBudgetSpend.mockResolvedValue(undefined);
     mockEstimateMaxCost.mockReturnValue(500_000);
+    mockAuthenticateRequest.mockResolvedValue({
+      userId: "user-uuid-456",
+      keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001",
+      method: "api_key",
+    });
   });
 
   afterEach(() => {
@@ -201,7 +217,7 @@ describe("Budget Enforcement", () => {
 
   // --- P0-1: Identity-based budget check ---
 
-  it("P0-1: uses x-nullspend-key-id and x-nullspend-user-id for budget lookup", async () => {
+  it("P0-1: uses auth result for budget lookup", async () => {
     mockLookupBudgets.mockResolvedValue([]);
     globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
@@ -210,8 +226,7 @@ describe("Budget Enforcement", () => {
     expect(mockLookupBudgets).toHaveBeenCalledWith(
       expect.anything(),
       expect.any(String),
-      "key-uuid-123",
-      "user-uuid-456",
+      { keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", userId: "user-uuid-456" },
     );
   });
 

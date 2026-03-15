@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { loadConfig, ConfigError } from "./config.js";
 
 const REQUIRED_ENV = {
@@ -212,32 +212,39 @@ describe("loadConfig", () => {
     expect(config.budgetEnforcementEnabled).toBe(false);
   });
 
-  it("throws ConfigError when cost tracking enabled but NULLSPEND_BACKEND_URL missing", () => {
-    Object.assign(process.env, REQUIRED_ENV);
-    delete process.env.NULLSPEND_BACKEND_URL;
-    expect(() => loadConfig()).toThrow(ConfigError);
-    expect(() => loadConfig()).toThrow("NULLSPEND_BACKEND_URL");
+  it("uses api_key auth mode when legacy cost tracking vars are absent", () => {
+    Object.assign(process.env, {
+      NULLSPEND_URL: "http://127.0.0.1:3000",
+      NULLSPEND_API_KEY: "ask_test123",
+      UPSTREAM_COMMAND: "node",
+    });
+    const config = loadConfig();
+    expect(config.authMode).toBe("api_key");
+    expect(config.costTrackingEnabled).toBe(true);
+    // backendUrl falls back to nullspendUrl
+    expect(config.backendUrl).toBe("http://127.0.0.1:3000");
   });
 
-  it("throws ConfigError when cost tracking enabled but NULLSPEND_PLATFORM_KEY missing", () => {
+  it("uses platform_key auth mode when legacy vars are present", () => {
     Object.assign(process.env, REQUIRED_ENV);
-    delete process.env.NULLSPEND_PLATFORM_KEY;
-    expect(() => loadConfig()).toThrow(ConfigError);
-    expect(() => loadConfig()).toThrow("NULLSPEND_PLATFORM_KEY");
+    const config = loadConfig();
+    expect(config.authMode).toBe("platform_key");
+    expect(config.backendUrl).toBe("http://localhost:8787");
+    expect(config.platformKey).toBe("pk-test");
+    expect(config.userId).toBe("user-1");
+    expect(config.keyId).toBe("key-1");
   });
 
-  it("throws ConfigError when cost tracking enabled but NULLSPEND_USER_ID missing", () => {
+  it("emits deprecation warnings when legacy vars are present", () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     Object.assign(process.env, REQUIRED_ENV);
-    delete process.env.NULLSPEND_USER_ID;
-    expect(() => loadConfig()).toThrow(ConfigError);
-    expect(() => loadConfig()).toThrow("NULLSPEND_USER_ID");
-  });
+    loadConfig();
 
-  it("throws ConfigError when cost tracking enabled but NULLSPEND_KEY_ID missing", () => {
-    Object.assign(process.env, REQUIRED_ENV);
-    delete process.env.NULLSPEND_KEY_ID;
-    expect(() => loadConfig()).toThrow(ConfigError);
-    expect(() => loadConfig()).toThrow("NULLSPEND_KEY_ID");
+    const output = stderrSpy.mock.calls.map((c) => String(c[0])).join("");
+    expect(output).toContain("DEPRECATED");
+    expect(output).toContain("NULLSPEND_BACKEND_URL");
+    expect(output).toContain("NULLSPEND_PLATFORM_KEY");
+    stderrSpy.mockRestore();
   });
 
   it("does not require cost tracking vars when NULLSPEND_COST_TRACKING=false", () => {
@@ -247,13 +254,11 @@ describe("loadConfig", () => {
       UPSTREAM_COMMAND: "node",
       NULLSPEND_COST_TRACKING: "false",
     });
-    // No NULLSPEND_BACKEND_URL etc.
     const config = loadConfig();
     expect(config.costTrackingEnabled).toBe(false);
-    expect(config.backendUrl).toBe("");
   });
 
-  it("reads cost tracking config fields", () => {
+  it("reads cost tracking config fields in legacy mode", () => {
     Object.assign(process.env, REQUIRED_ENV);
     const config = loadConfig();
     expect(config.backendUrl).toBe("http://localhost:8787");

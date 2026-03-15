@@ -81,20 +81,30 @@ export class EventBatcher {
 
   constructor(opts: {
     backendUrl: string;
-    platformKey: string;
-    userId: string;
-    keyId: string;
     batchSize?: number;
     flushIntervalMs?: number;
-  }) {
+  } & (
+    | { authMode: "api_key"; apiKey: string }
+    | { authMode?: "platform_key"; platformKey: string; userId: string; keyId: string }
+  )) {
     this.backendUrl = opts.backendUrl;
     this.batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE;
-    this.headers = {
-      "Content-Type": "application/json",
-      "x-nullspend-auth": opts.platformKey,
-      "x-nullspend-user-id": opts.userId,
-      "x-nullspend-key-id": opts.keyId,
-    };
+
+    if ("apiKey" in opts && opts.authMode === "api_key") {
+      this.headers = {
+        "Content-Type": "application/json",
+        "x-nullspend-key": opts.apiKey,
+      };
+    } else if ("platformKey" in opts) {
+      this.headers = {
+        "Content-Type": "application/json",
+        "x-nullspend-auth": opts.platformKey,
+        "x-nullspend-user-id": opts.userId,
+        "x-nullspend-key-id": opts.keyId,
+      };
+    } else {
+      this.headers = { "Content-Type": "application/json" };
+    }
 
     const interval = opts.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS;
     this.flushTimer = setInterval(() => this.flush(), interval);
@@ -196,17 +206,27 @@ export class BudgetClient {
 
   constructor(opts: {
     backendUrl: string;
-    platformKey: string;
-    userId: string;
-    keyId: string;
-  }) {
+  } & (
+    | { authMode: "api_key"; apiKey: string }
+    | { authMode?: "platform_key"; platformKey: string; userId: string; keyId: string }
+  )) {
     this.backendUrl = opts.backendUrl;
-    this.headers = {
-      "Content-Type": "application/json",
-      "x-nullspend-auth": opts.platformKey,
-      "x-nullspend-user-id": opts.userId,
-      "x-nullspend-key-id": opts.keyId,
-    };
+
+    if ("apiKey" in opts && opts.authMode === "api_key") {
+      this.headers = {
+        "Content-Type": "application/json",
+        "x-nullspend-key": opts.apiKey,
+      };
+    } else if ("platformKey" in opts) {
+      this.headers = {
+        "Content-Type": "application/json",
+        "x-nullspend-auth": opts.platformKey,
+        "x-nullspend-user-id": opts.userId,
+        "x-nullspend-key-id": opts.keyId,
+      };
+    } else {
+      this.headers = { "Content-Type": "application/json" };
+    }
   }
 
   async check(
@@ -409,12 +429,15 @@ export class ToolCostRegistry {
 
 export interface CostTrackerConfig {
   backendUrl: string;
-  platformKey: string;
-  userId: string;
-  keyId: string;
   serverName: string;
   budgetEnforcementEnabled: boolean;
   toolCostOverrides: Record<string, number>;
+  // Auth: either API key (new) or platform key (legacy)
+  authMode: "api_key" | "platform_key";
+  apiKey?: string;
+  platformKey?: string;
+  userId?: string;
+  keyId?: string;
 }
 
 export class CostTracker {
@@ -425,17 +448,18 @@ export class CostTracker {
 
   constructor(config: CostTrackerConfig) {
     this.config = config;
+
+    const authOpts = config.authMode === "api_key"
+      ? { authMode: "api_key" as const, apiKey: config.apiKey! }
+      : { platformKey: config.platformKey!, userId: config.userId!, keyId: config.keyId! };
+
     this.batcher = new EventBatcher({
       backendUrl: config.backendUrl,
-      platformKey: config.platformKey,
-      userId: config.userId,
-      keyId: config.keyId,
+      ...authOpts,
     });
     this.budgetClient = new BudgetClient({
       backendUrl: config.backendUrl,
-      platformKey: config.platformKey,
-      userId: config.userId,
-      keyId: config.keyId,
+      ...authOpts,
     });
   }
 

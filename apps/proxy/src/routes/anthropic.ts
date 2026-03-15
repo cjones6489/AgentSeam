@@ -1,6 +1,6 @@
 import { waitUntil } from "cloudflare:workers";
 import { Redis } from "@upstash/redis/cloudflare";
-import { validatePlatformKey, unauthorizedResponse } from "../lib/auth.js";
+import { authenticateRequest, unauthorizedResponse } from "../lib/auth.js";
 import {
   buildAnthropicUpstreamHeaders,
   buildAnthropicClientHeaders,
@@ -19,6 +19,7 @@ import { reconcileReservation } from "../lib/budget-reconcile.js";
 import { sanitizeUpstreamError } from "../lib/sanitize-upstream-error.js";
 
 const UPSTREAM_TIMEOUT_MS = 120_000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Attribution = {
   userId: string | null;
@@ -31,14 +32,19 @@ export async function handleAnthropicMessages(
   env: Env,
   body: Record<string, unknown>,
 ): Promise<Response> {
-  const isAuthed = await validatePlatformKey(
-    request.headers.get("x-nullspend-auth"),
-    env.PLATFORM_AUTH_KEY,
-  );
-  if (!isAuthed) return unauthorizedResponse();
+  const connectionString = env.HYPERDRIVE.connectionString;
+  const auth = await authenticateRequest(request, connectionString, env.PLATFORM_AUTH_KEY);
+  if (!auth) return unauthorizedResponse();
 
   const requestModel = extractModelFromBody(body);
-  const attribution = extractAttribution(request);
+
+  const legacyAttribution = auth.method === "platform_key" ? extractAttribution(request) : null;
+  const rawApiKeyId = auth.method === "api_key" ? auth.keyId : legacyAttribution?.apiKeyId ?? null;
+  const attribution: Attribution = {
+    userId: auth.method === "api_key" ? auth.userId : legacyAttribution?.userId ?? null,
+    apiKeyId: rawApiKeyId && UUID_RE.test(rawApiKeyId) ? rawApiKeyId : null,
+    actionId: request.headers.get("x-nullspend-action-id"),
+  };
 
   if (!isKnownModel("anthropic", requestModel)) {
     return Response.json(
@@ -54,7 +60,6 @@ export async function handleAnthropicMessages(
 
   // --- Budget enforcement ---
   const redis = Redis.fromEnv(env);
-  const connectionString = env.HYPERDRIVE.connectionString;
   let reservationId: string | null = null;
   let budgetEntities: BudgetEntity[] = [];
 
@@ -62,8 +67,7 @@ export async function handleAnthropicMessages(
     budgetEntities = await lookupBudgets(
       redis,
       connectionString,
-      attribution.apiKeyId,
-      attribution.userId,
+      { keyId: attribution.apiKeyId, userId: attribution.userId },
     );
   } catch {
     return Response.json(

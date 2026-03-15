@@ -39,6 +39,16 @@ vi.mock("@nullspend/cost-engine", () => ({
   isKnownModel: mockIsKnownModel,
 }));
 
+const mockAuthenticateRequest = vi.fn();
+vi.mock("../lib/auth.js", () => ({
+  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
+  unauthorizedResponse: () =>
+    Response.json(
+      { error: "unauthorized", message: "Invalid or missing authentication header" },
+      { status: 401 },
+    ),
+}));
+
 import { handleChatCompletions } from "../routes/openai.js";
 
 function makeRequest(
@@ -88,6 +98,12 @@ describe("handleChatCompletions", () => {
   beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
+    mockAuthenticateRequest.mockReset();
+    mockAuthenticateRequest.mockResolvedValue({
+      userId: "user-1",
+      keyId: "key-1",
+      method: "platform_key",
+    });
   });
 
   afterEach(() => {
@@ -107,23 +123,12 @@ describe("handleChatCompletions", () => {
     expect(body.error).toBe("invalid_model");
   });
 
-  it("returns 401 when platform key is missing", async () => {
-    const request = new Request("http://localhost/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-    const res = await handleChatCompletions(request, makeEnv(), {
+  it("returns 401 when authentication fails", async () => {
+    mockAuthenticateRequest.mockResolvedValue(null);
+    const request = makeRequest({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: "hi" }],
     });
-    expect(res.status).toBe(401);
-  });
-
-  it("returns 401 when platform key is wrong", async () => {
-    const request = makeRequest(
-      { model: "gpt-4o-mini", messages: [{ role: "user", content: "hi" }] },
-      { "X-NullSpend-Auth": "wrong-key" },
-    );
     const res = await handleChatCompletions(request, makeEnv(), {
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: "hi" }],

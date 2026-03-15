@@ -1,8 +1,10 @@
 import { waitUntil } from "cloudflare:workers";
 import { Redis } from "@upstash/redis/cloudflare";
-import { validatePlatformKey, unauthorizedResponse } from "../lib/auth.js";
+import { authenticateRequest, unauthorizedResponse } from "../lib/auth.js";
 import { buildUpstreamHeaders, buildClientHeaders } from "../lib/headers.js";
 import { ensureStreamOptions, extractModelFromBody, extractAttribution } from "../lib/request-utils.js";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { createSSEParser } from "../lib/sse-parser.js";
 import { calculateOpenAICost } from "../lib/cost-calculator.js";
 import { isKnownModel } from "@nullspend/cost-engine";
@@ -19,14 +21,20 @@ export async function handleChatCompletions(
   env: Env,
   body: Record<string, unknown>,
 ): Promise<Response> {
-  const isAuthed = await validatePlatformKey(
-    request.headers.get("x-nullspend-auth"),
-    env.PLATFORM_AUTH_KEY,
-  );
-  if (!isAuthed) return unauthorizedResponse();
+  const connectionString = env.HYPERDRIVE.connectionString;
+  const auth = await authenticateRequest(request, connectionString, env.PLATFORM_AUTH_KEY);
+  if (!auth) return unauthorizedResponse();
 
   const requestModel = extractModelFromBody(body);
-  const attribution = extractAttribution(request);
+
+  // Build attribution from auth result or legacy headers
+  const legacyAttribution = auth.method === "platform_key" ? extractAttribution(request) : null;
+  const rawApiKeyId = auth.method === "api_key" ? auth.keyId : legacyAttribution?.apiKeyId ?? null;
+  const attribution: Attribution = {
+    userId: auth.method === "api_key" ? auth.userId : legacyAttribution?.userId ?? null,
+    apiKeyId: rawApiKeyId && UUID_RE.test(rawApiKeyId) ? rawApiKeyId : null,
+    actionId: request.headers.get("x-nullspend-action-id"),
+  };
 
   if (!isKnownModel("openai", requestModel)) {
     return Response.json(
@@ -43,7 +51,6 @@ export async function handleChatCompletions(
 
   // --- Budget enforcement ---
   const redis = Redis.fromEnv(env);
-  const connectionString = env.HYPERDRIVE.connectionString;
   let reservationId: string | null = null;
   let budgetEntities: BudgetEntity[] = [];
 
@@ -51,8 +58,7 @@ export async function handleChatCompletions(
     budgetEntities = await lookupBudgets(
       redis,
       connectionString,
-      attribution.apiKeyId,
-      attribution.userId,
+      { keyId: attribution.apiKeyId, userId: attribution.userId },
     );
   } catch {
     // Budget lookup failed — fail-closed (budget is a safety feature)

@@ -571,6 +571,7 @@ describe("CostTracker", () => {
   function makeTracker(overrides?: Partial<import("./cost-tracker.js").CostTrackerConfig>) {
     return new CostTracker({
       backendUrl: "http://localhost:8787",
+      authMode: "platform_key",
       platformKey: "pk-test",
       userId: "user-1",
       keyId: "key-1",

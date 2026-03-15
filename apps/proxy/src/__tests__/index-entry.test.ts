@@ -48,6 +48,16 @@ vi.mock("@nullspend/cost-engine", () => ({
   costComponent: vi.fn().mockReturnValue(0),
 }));
 
+const mockAuthenticateRequest = vi.fn();
+vi.mock("../lib/auth.js", () => ({
+  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
+  unauthorizedResponse: () =>
+    Response.json(
+      { error: "unauthorized", message: "Invalid or missing authentication header" },
+      { status: 401 },
+    ),
+}));
+
 import entrypoint from "../index.js";
 
 function makeEnv(): Env {
@@ -73,6 +83,12 @@ describe("Worker entry point routing", () => {
   beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
+    mockAuthenticateRequest.mockReset();
+    mockAuthenticateRequest.mockResolvedValue({
+      userId: "user-1",
+      keyId: "key-1",
+      method: "platform_key",
+    });
   });
 
   afterEach(() => {

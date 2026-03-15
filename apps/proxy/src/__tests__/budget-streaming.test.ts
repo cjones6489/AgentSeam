@@ -88,6 +88,16 @@ vi.mock("@upstash/redis/cloudflare", () => ({
   },
 }));
 
+const mockAuthenticateRequest = vi.fn();
+vi.mock("../lib/auth.js", () => ({
+  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
+  unauthorizedResponse: () =>
+    Response.json(
+      { error: "unauthorized", message: "Invalid or missing authentication header" },
+      { status: 401 },
+    ),
+}));
+
 import { handleChatCompletions } from "../routes/openai.js";
 
 function makeRequest(
@@ -180,10 +190,16 @@ describe("Streaming + Budget Integration", () => {
     mockEstimateMaxCost.mockReset();
     mockUpdateBudgetSpend.mockReset();
     mockCalculateOpenAICost.mockReset();
+    mockAuthenticateRequest.mockReset();
 
     mockReconcile.mockResolvedValue({ status: "reconciled", spends: {} });
     mockUpdateBudgetSpend.mockResolvedValue(undefined);
     mockEstimateMaxCost.mockReturnValue(500_000);
+    mockAuthenticateRequest.mockResolvedValue({
+      userId: "user-uuid-456",
+      keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001",
+      method: "api_key",
+    });
   });
 
   afterEach(() => {

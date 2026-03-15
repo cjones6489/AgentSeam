@@ -69,6 +69,16 @@ vi.mock("@upstash/redis/cloudflare", () => ({
   },
 }));
 
+const mockAuthenticateRequest = vi.fn();
+vi.mock("../lib/auth.js", () => ({
+  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
+  unauthorizedResponse: () =>
+    Response.json(
+      { error: "unauthorized", message: "Invalid or missing authentication header" },
+      { status: 401 },
+    ),
+}));
+
 import { handleAnthropicMessages } from "../routes/anthropic.js";
 
 const BUDGET_ENTITY = {
@@ -146,6 +156,12 @@ describe("Anthropic budget enforcement", () => {
     mockCheckAndReserve.mockReset();
     mockReconcileReservation.mockReset().mockResolvedValue(undefined);
     mockEstimateAnthropicMaxCost.mockReset().mockReturnValue(500_000);
+    mockAuthenticateRequest.mockReset();
+    mockAuthenticateRequest.mockResolvedValue({
+      userId: "user-1",
+      keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001",
+      method: "api_key",
+    });
   });
 
   afterEach(() => {

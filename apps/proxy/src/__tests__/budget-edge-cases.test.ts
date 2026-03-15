@@ -88,6 +88,16 @@ vi.mock("@upstash/redis/cloudflare", () => ({
   },
 }));
 
+const mockAuthenticateRequest = vi.fn();
+vi.mock("../lib/auth.js", () => ({
+  authenticateRequest: (...args: unknown[]) => mockAuthenticateRequest(...args),
+  unauthorizedResponse: () =>
+    Response.json(
+      { error: "unauthorized", message: "Invalid or missing authentication header" },
+      { status: 401 },
+    ),
+}));
+
 import { handleChatCompletions } from "../routes/openai.js";
 
 function makeRequest(
@@ -170,11 +180,17 @@ describe("Budget Edge Cases", () => {
     mockEstimateMaxCost.mockReset();
     mockUpdateBudgetSpend.mockReset();
     mockCalculateOpenAICost.mockReset();
+    mockAuthenticateRequest.mockReset();
 
     mockReconcile.mockResolvedValue({ status: "reconciled", spends: {} });
     mockUpdateBudgetSpend.mockResolvedValue(undefined);
     mockEstimateMaxCost.mockReturnValue(500_000);
     mockCalculateOpenAICost.mockReturnValue({ costMicrodollars: 42_000 });
+    mockAuthenticateRequest.mockResolvedValue({
+      userId: "user-uuid-456",
+      keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001",
+      method: "api_key",
+    });
   });
 
   afterEach(() => {
@@ -184,61 +200,57 @@ describe("Budget Edge Cases", () => {
 
   // --- Attribution nulls ---
 
-  it("passes (null, userId) when X-NullSpend-Key-Id header is absent", async () => {
-    mockLookupBudgets.mockResolvedValue([]);
-    globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
-
-    const req = makeRequest(defaultBody, { "X-NullSpend-Key-Id": "" });
-    req.headers.delete("X-NullSpend-Key-Id");
-
-    await handleChatCompletions(req, makeEnv(), defaultBody);
-
-    expect(mockLookupBudgets).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.any(String),
-      null,
-      "user-uuid-456",
-    );
-  });
-
-  it("passes (keyId, null) when X-NullSpend-User-Id header is absent", async () => {
-    mockLookupBudgets.mockResolvedValue([]);
-    globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
-
-    const req = makeRequest(defaultBody, { "X-NullSpend-User-Id": "" });
-    req.headers.delete("X-NullSpend-User-Id");
-
-    await handleChatCompletions(req, makeEnv(), defaultBody);
-
-    expect(mockLookupBudgets).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.any(String),
-      "key-uuid-123",
-      null,
-    );
-  });
-
-  it("passes (null, null) when both attribution headers are absent", async () => {
-    mockLookupBudgets.mockResolvedValue([]);
-    globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
-
-    const req = new Request("http://localhost/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer sk-test-key",
-        "X-NullSpend-Auth": "test-platform-key",
-      },
-      body: JSON.stringify(defaultBody),
+  it("passes { keyId: null, userId } when auth result has no keyId", async () => {
+    mockAuthenticateRequest.mockResolvedValue({
+      userId: "user-uuid-456",
+      keyId: null,
+      method: "api_key",
     });
+    mockLookupBudgets.mockResolvedValue([]);
+    globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
 
-    await handleChatCompletions(req, makeEnv(), defaultBody);
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
 
     expect(mockLookupBudgets).toHaveBeenCalledWith(
       expect.anything(),
       expect.any(String),
-      null,
-      null,
+      { keyId: null, userId: "user-uuid-456" },
+    );
+  });
+
+  it("passes { keyId, userId: null } when auth result has no userId", async () => {
+    mockAuthenticateRequest.mockResolvedValue({
+      userId: null,
+      keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001",
+      method: "api_key",
+    });
+    mockLookupBudgets.mockResolvedValue([]);
+    globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
+
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+
+    expect(mockLookupBudgets).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      { keyId: "a0a0a0a0-b1b1-c2c2-d3d3-e4e4e4e40001", userId: null },
+    );
+  });
+
+  it("passes { keyId: null, userId: null } when auth result has neither", async () => {
+    mockAuthenticateRequest.mockResolvedValue({
+      userId: null,
+      keyId: null,
+      method: "api_key",
+    });
+    mockLookupBudgets.mockResolvedValue([]);
+    globalThis.fetch = vi.fn().mockResolvedValue(makeSuccessResponse());
+
+    await handleChatCompletions(makeRequest(defaultBody), makeEnv(), defaultBody);
+
+    expect(mockLookupBudgets).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.any(String),
+      { keyId: null, userId: null },
     );
     expect(mockCheckAndReserve).not.toHaveBeenCalled();
   });

@@ -1,6 +1,6 @@
 import { waitUntil } from "cloudflare:workers";
 import { Redis } from "@upstash/redis/cloudflare";
-import { validatePlatformKey, unauthorizedResponse } from "../lib/auth.js";
+import { authenticateRequest, unauthorizedResponse } from "../lib/auth.js";
 import { extractAttribution } from "../lib/request-utils.js";
 import { lookupBudgets, type BudgetEntity } from "../lib/budget-lookup.js";
 import { checkAndReserve, type BudgetCheckResult } from "../lib/budget.js";
@@ -41,11 +41,9 @@ export async function handleMcpBudgetCheck(
   env: Env,
   body: Record<string, unknown>,
 ): Promise<Response> {
-  const isAuthed = await validatePlatformKey(
-    request.headers.get("x-nullspend-auth"),
-    env.PLATFORM_AUTH_KEY,
-  );
-  if (!isAuthed) return unauthorizedResponse();
+  const connectionString = env.HYPERDRIVE.connectionString;
+  const auth = await authenticateRequest(request, connectionString, env.PLATFORM_AUTH_KEY);
+  if (!auth) return unauthorizedResponse();
 
   const parsed = validateBudgetCheckBody(body);
   if (!parsed) {
@@ -59,15 +57,19 @@ export async function handleMcpBudgetCheck(
     );
   }
 
-  const userId = request.headers.get("x-nullspend-user-id");
-  const keyId = request.headers.get("x-nullspend-key-id");
+  // Derive identity from auth result or legacy headers
+  const userId = auth.method === "api_key"
+    ? auth.userId
+    : request.headers.get("x-nullspend-user-id");
+  const keyId = auth.method === "api_key"
+    ? auth.keyId
+    : request.headers.get("x-nullspend-key-id");
 
   const redis = Redis.fromEnv(env);
-  const connectionString = env.HYPERDRIVE.connectionString;
 
   let budgetEntities: BudgetEntity[];
   try {
-    budgetEntities = await lookupBudgets(redis, connectionString, keyId, userId);
+    budgetEntities = await lookupBudgets(redis, connectionString, { keyId, userId });
   } catch {
     return Response.json(
       { error: "budget_unavailable", message: "Budget service unavailable" },
@@ -155,11 +157,9 @@ export async function handleMcpEvents(
   env: Env,
   body: Record<string, unknown>,
 ): Promise<Response> {
-  const isAuthed = await validatePlatformKey(
-    request.headers.get("x-nullspend-auth"),
-    env.PLATFORM_AUTH_KEY,
-  );
-  if (!isAuthed) return unauthorizedResponse();
+  const connectionString = env.HYPERDRIVE.connectionString;
+  const auth = await authenticateRequest(request, connectionString, env.PLATFORM_AUTH_KEY);
+  if (!auth) return unauthorizedResponse();
 
   const events = validateEvents(body);
   if (!events) {
@@ -172,12 +172,14 @@ export async function handleMcpEvents(
     );
   }
 
-  const attribution = extractAttribution(request);
-  const connectionString = env.HYPERDRIVE.connectionString;
+  // Derive identity from auth result or legacy headers
+  const legacyAttribution = auth.method === "platform_key" ? extractAttribution(request) : null;
+  const rawApiKeyId = auth.method === "api_key" ? auth.keyId : legacyAttribution?.apiKeyId ?? null;
+  const userId = auth.method === "api_key" ? auth.userId : legacyAttribution?.userId ?? null;
 
   // Validate UUID fields before DB insertion to prevent FK constraint failures
-  const apiKeyId = attribution.apiKeyId && UUID_RE.test(attribution.apiKeyId)
-    ? attribution.apiKeyId
+  const apiKeyId = rawApiKeyId && UUID_RE.test(rawApiKeyId)
+    ? rawApiKeyId
     : null;
 
   const accepted = events.length;
@@ -202,7 +204,7 @@ export async function handleMcpEvents(
             reasoningTokens: 0,
             costMicrodollars: event.costMicrodollars,
             durationMs: event.durationMs,
-            userId: attribution.userId,
+            userId,
             apiKeyId,
             actionId,
           });
@@ -214,8 +216,7 @@ export async function handleMcpEvents(
               budgetEntities = await lookupBudgets(
                 redis,
                 connectionString,
-                attribution.apiKeyId,
-                attribution.userId,
+                { keyId: apiKeyId, userId },
               );
             } catch {
               // best-effort

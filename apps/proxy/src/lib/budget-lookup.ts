@@ -29,9 +29,9 @@ export interface BudgetEntity {
 export async function lookupBudgets(
   redis: Redis,
   connectionString: string,
-  keyId: string | null,
-  userId: string | null,
+  identity: { keyId: string | null; userId: string | null },
 ): Promise<BudgetEntity[]> {
+  const { keyId, userId } = identity;
   const entities: { type: string; id: string; redisKey: string; noneKey: string }[] = [];
 
   if (keyId) {
