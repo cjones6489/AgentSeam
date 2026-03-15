@@ -192,6 +192,7 @@ describe("costSummaryResponseSchema", () => {
         requestCount: 10,
       },
     ],
+    tools: [],
     totals: {
       totalCostMicrodollars: 1_000_000,
       totalRequests: 10,
@@ -213,12 +214,14 @@ describe("costSummaryResponseSchema", () => {
       models: [],
       providers: [],
       keys: [],
+      tools: [],
       totals: { totalCostMicrodollars: 0, totalRequests: 0, period: "7d" },
     });
     expect(result.daily).toHaveLength(0);
     expect(result.models).toHaveLength(0);
     expect(result.providers).toHaveLength(0);
     expect(result.keys).toHaveLength(0);
+    expect(result.tools).toHaveLength(0);
   });
 
   it("rejects response missing totals period", () => {

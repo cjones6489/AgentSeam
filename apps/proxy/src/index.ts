@@ -2,6 +2,7 @@ import { Redis } from "@upstash/redis/cloudflare";
 import { Ratelimit } from "@upstash/ratelimit";
 import { handleChatCompletions } from "./routes/openai.js";
 import { handleAnthropicMessages } from "./routes/anthropic.js";
+import { handleMcpBudgetCheck, handleMcpEvents } from "./routes/mcp.js";
 
 const MAX_BODY_SIZE = 1_048_576; // 1MB
 const DEFAULT_RATE_LIMIT = 120;
@@ -179,6 +180,23 @@ export default {
           return await handleChatCompletions(request, env, result.body);
         }
         return await handleAnthropicMessages(request, env, result.body);
+      }
+
+      if (
+        request.method === "POST" &&
+        (url.pathname === "/v1/mcp/budget/check" ||
+          url.pathname === "/v1/mcp/events")
+      ) {
+        const rateLimitResponse = await applyRateLimit(request, env);
+        if (rateLimitResponse) return rateLimitResponse;
+
+        const result = await parseRequestBody(request);
+        if (result.error) return result.error;
+
+        if (url.pathname === "/v1/mcp/budget/check") {
+          return await handleMcpBudgetCheck(request, env, result.body);
+        }
+        return await handleMcpEvents(request, env, result.body);
       }
 
       if (url.pathname.startsWith("/v1/")) {

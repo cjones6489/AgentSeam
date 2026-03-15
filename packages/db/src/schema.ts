@@ -155,3 +155,27 @@ export const subscriptions = pgTable("subscriptions", {
 
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
 export type NewSubscriptionRow = typeof subscriptions.$inferInsert;
+
+export const TOOL_COST_SOURCES = ["discovered", "manual"] as const;
+
+export type ToolCostSource = (typeof TOOL_COST_SOURCES)[number];
+
+export const toolCosts = pgTable("tool_costs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(),
+  serverName: text("server_name").notNull(),
+  toolName: text("tool_name").notNull(),
+  costMicrodollars: bigint("cost_microdollars", { mode: "number" }).notNull().default(10_000),
+  source: text("source").$type<ToolCostSource>().notNull().default("discovered"),
+  description: text("description"),
+  annotations: jsonb("annotations").$type<Record<string, unknown> | null>(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("tool_costs_user_server_tool_idx").on(table.userId, table.serverName, table.toolName),
+  index("tool_costs_user_id_idx").on(table.userId),
+]);
+
+export type ToolCostRow = typeof toolCosts.$inferSelect;
+export type NewToolCostRow = typeof toolCosts.$inferInsert;

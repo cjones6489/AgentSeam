@@ -8,6 +8,15 @@ export interface ProxyConfig {
   gatedTools: Set<string> | "*";
   passthroughTools: Set<string>;
   approvalTimeoutSeconds: number;
+  // Cost tracking
+  backendUrl: string;
+  platformKey: string;
+  userId: string;
+  keyId: string;
+  serverName: string;
+  costTrackingEnabled: boolean;
+  budgetEnforcementEnabled: boolean;
+  toolCostOverrides: Record<string, number>;
 }
 
 const DEFAULT_AGENT_ID = "mcp-proxy";
@@ -46,6 +55,51 @@ export function loadConfig(): ProxyConfig {
     );
   }
 
+  const costTrackingEnabled =
+    process.env.NULLSPEND_COST_TRACKING !== "false";
+  const budgetEnforcementEnabled =
+    process.env.NULLSPEND_BUDGET_ENFORCEMENT !== "false";
+
+  const backendUrl = process.env.NULLSPEND_BACKEND_URL ?? "";
+  const platformKey = process.env.NULLSPEND_PLATFORM_KEY ?? "";
+  const userId = process.env.NULLSPEND_USER_ID ?? "";
+  const keyId = process.env.NULLSPEND_KEY_ID ?? "";
+
+  if (costTrackingEnabled) {
+    const costMissing: string[] = [];
+    if (!backendUrl) costMissing.push("NULLSPEND_BACKEND_URL");
+    if (!platformKey) costMissing.push("NULLSPEND_PLATFORM_KEY");
+    if (!userId) costMissing.push("NULLSPEND_USER_ID");
+    if (!keyId) costMissing.push("NULLSPEND_KEY_ID");
+    if (costMissing.length > 0) {
+      throw new ConfigError(
+        `Cost tracking is enabled but missing required environment variables: ${costMissing.join(", ")}. ` +
+          `Set them or disable cost tracking with NULLSPEND_COST_TRACKING=false.`,
+      );
+    }
+  }
+
+  const serverNameRaw =
+    process.env.NULLSPEND_SERVER_NAME ?? upstreamCommand!;
+  const serverName = serverNameRaw.trim();
+
+  if (!serverName) {
+    throw new ConfigError(
+      "NULLSPEND_SERVER_NAME must not be empty (resolved to empty string after trimming whitespace).",
+    );
+  }
+
+  if (serverName.includes("/")) {
+    throw new ConfigError(
+      `NULLSPEND_SERVER_NAME must not contain '/' (got: "${serverName}"). ` +
+        `The '/' character is reserved for separating server/tool in analytics.`,
+    );
+  }
+
+  const toolCostOverrides = parseToolCostOverrides(
+    process.env.NULLSPEND_TOOL_COSTS,
+  );
+
   return {
     nullspendUrl: nullspendUrl!,
     nullspendApiKey: nullspendApiKey!,
@@ -56,6 +110,14 @@ export function loadConfig(): ProxyConfig {
     gatedTools,
     passthroughTools,
     approvalTimeoutSeconds,
+    backendUrl,
+    platformKey,
+    userId,
+    keyId,
+    serverName,
+    costTrackingEnabled,
+    budgetEnforcementEnabled,
+    toolCostOverrides,
   };
 }
 
@@ -115,6 +177,37 @@ function parseToolSet(raw: string | undefined): Set<string> {
       .map((s) => s.trim())
       .filter((s) => s.length > 0),
   );
+}
+
+function parseToolCostOverrides(
+  raw: string | undefined,
+): Record<string, number> {
+  if (!raw) return {};
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new ConfigError(
+        `NULLSPEND_TOOL_COSTS must be a JSON object, got: ${Array.isArray(parsed) ? "array" : typeof parsed}`,
+      );
+    }
+    const result: Record<string, number> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      const num = Number(value);
+      if (!Number.isFinite(num) || num < 0) {
+        throw new ConfigError(
+          `NULLSPEND_TOOL_COSTS: value for "${key}" must be a non-negative number, got: ${String(value)}`,
+        );
+      }
+      result[key] = num;
+    }
+    return result;
+  } catch (err) {
+    if (err instanceof ConfigError) throw err;
+    throw new ConfigError(
+      `NULLSPEND_TOOL_COSTS is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 export class ConfigError extends Error {

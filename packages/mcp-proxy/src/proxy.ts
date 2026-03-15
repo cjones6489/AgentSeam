@@ -3,11 +3,12 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { Tool } from "@modelcontextprotocol/sdk/types.js";
+import type { Tool, ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import type { NullSpend } from "@nullspend/sdk";
 import type { ProxyConfig } from "./config.js";
 import { isToolGated, gateToolCall } from "./gate.js";
+import type { CostTracker } from "./cost-tracker.js";
 
 export async function discoverUpstreamTools(
   upstreamClient: Client,
@@ -33,6 +34,7 @@ export function registerProxyHandlers(
   config: ProxyConfig,
   cachedTools: Tool[],
   shutdownSignal: AbortSignal,
+  costTracker?: CostTracker,
 ): void {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: cachedTools,
@@ -41,11 +43,69 @@ export function registerProxyHandlers(
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
-    if (!isToolGated(name, config)) {
-      return forwardToUpstream(upstreamClient, name, args);
+    // --- Cost tracking: estimate & budget check ---
+    let costEstimate = 0;
+    let reservationId: string | undefined;
+
+    if (costTracker) {
+      const tool = cachedTools.find((t) => t.name === name);
+      const annotations: ToolAnnotations | undefined = tool?.annotations;
+      costEstimate = costTracker.estimateCost(name, annotations);
+
+      if (costEstimate > 0) {
+        const budgetResult = await costTracker.checkBudget(name, costEstimate);
+        if (!budgetResult.allowed) {
+          costTracker.reportEvent({
+            toolName: name,
+            serverName: costTracker.config.serverName,
+            durationMs: 0,
+            costMicrodollars: 0,
+            status: "denied",
+          });
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Tool "${name}" blocked: budget exceeded. Remaining: ${budgetResult.remaining ?? 0} microdollars.`,
+              },
+            ],
+            isError: true,
+          };
+        }
+        reservationId = budgetResult.reservationId;
+      }
     }
 
-    return handleGatedCall(upstreamClient, sdk, name, args, config, shutdownSignal);
+    // --- Gate check (existing approval flow) ---
+    let result: { content: unknown[]; isError?: boolean };
+    let actionId: string | undefined;
+    let durationMs: number;
+
+    if (!isToolGated(name, config)) {
+      const startTime = performance.now();
+      result = await forwardToUpstream(upstreamClient, name, args);
+      durationMs = Math.round(performance.now() - startTime);
+    } else {
+      const gatedResult = await handleGatedCall(upstreamClient, sdk, name, args, config, shutdownSignal);
+      result = gatedResult;
+      actionId = gatedResult.actionId;
+      durationMs = gatedResult.upstreamDurationMs ?? 0;
+    }
+
+    // --- Cost tracking: report event ---
+    if (costTracker) {
+      costTracker.reportEvent({
+        toolName: name,
+        serverName: costTracker.config.serverName,
+        durationMs,
+        costMicrodollars: costEstimate,
+        status: result.isError ? "error" : "success",
+        reservationId,
+        actionId,
+      });
+    }
+
+    return result;
   });
 }
 
@@ -80,7 +140,7 @@ async function handleGatedCall(
   args: Record<string, unknown> | undefined,
   config: ProxyConfig,
   signal: AbortSignal,
-): Promise<{ content: unknown[]; isError?: boolean }> {
+): Promise<{ content: unknown[]; isError?: boolean; actionId?: string; upstreamDurationMs?: number }> {
   let gateResult;
   try {
     gateResult = await gateToolCall(sdk, name, args, config, signal);
@@ -105,6 +165,7 @@ async function handleGatedCall(
         },
       ],
       isError: true,
+      actionId: gateResult.actionId,
     };
   }
 
@@ -117,6 +178,7 @@ async function handleGatedCall(
         },
       ],
       isError: true,
+      actionId: gateResult.actionId,
     };
   }
 
@@ -126,11 +188,13 @@ async function handleGatedCall(
     // best-effort; don't block the call if this fails
   }
 
+  const upstreamStart = performance.now();
   try {
     const result = await upstreamClient.callTool({
       name,
       arguments: args,
     });
+    const upstreamDurationMs = Math.round(performance.now() - upstreamStart);
 
     const typedResult = result as { content: unknown[]; isError?: boolean };
 
@@ -152,7 +216,7 @@ async function handleGatedCall(
         // best-effort audit trail
       }
 
-      return typedResult;
+      return { ...typedResult, actionId: gateResult.actionId, upstreamDurationMs };
     }
 
     try {
@@ -164,8 +228,9 @@ async function handleGatedCall(
       // best-effort audit trail
     }
 
-    return typedResult;
+    return { ...typedResult, actionId: gateResult.actionId, upstreamDurationMs };
   } catch (err) {
+    const upstreamDurationMs = Math.round(performance.now() - upstreamStart);
     const errorMessage = err instanceof Error ? err.message : String(err);
 
     try {
@@ -185,6 +250,8 @@ async function handleGatedCall(
         },
       ],
       isError: true,
+      actionId: gateResult.actionId,
+      upstreamDurationMs,
     };
   }
 }

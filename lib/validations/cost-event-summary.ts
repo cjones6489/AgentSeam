@@ -38,11 +38,19 @@ export const totalsSchema = z.object({
   totalRequests: z.number().int().nonnegative(),
 });
 
+export const toolBreakdownSchema = z.object({
+  model: z.string(),
+  totalCostMicrodollars: z.number().nonnegative(),
+  requestCount: z.number().int(),
+  avgDurationMs: z.number().int(),
+});
+
 export const costSummaryResponseSchema = z.object({
   daily: z.array(dailySpendSchema),
   models: z.array(modelBreakdownSchema),
   providers: z.array(providerBreakdownSchema),
   keys: z.array(keyBreakdownSchema),
+  tools: z.array(toolBreakdownSchema),
   totals: totalsSchema.extend({ period: z.enum(["7d", "30d", "90d"]) }),
 });
 
@@ -52,3 +60,4 @@ export type DailySpend = z.infer<typeof dailySpendSchema>;
 export type ModelBreakdown = z.infer<typeof modelBreakdownSchema>;
 export type ProviderBreakdown = z.infer<typeof providerBreakdownSchema>;
 export type KeyBreakdown = z.infer<typeof keyBreakdownSchema>;
+export type ToolBreakdown = z.infer<typeof toolBreakdownSchema>;

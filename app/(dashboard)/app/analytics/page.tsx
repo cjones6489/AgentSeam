@@ -7,6 +7,7 @@ import { KeyBreakdown } from "@/components/analytics/key-breakdown";
 import { ModelBreakdown } from "@/components/analytics/model-breakdown";
 import { ProviderBreakdown } from "@/components/analytics/provider-breakdown";
 import { SpendChart } from "@/components/analytics/spend-chart";
+import { ToolBreakdown } from "@/components/analytics/tool-breakdown";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCostSummary } from "@/lib/queries/cost-event-summary";
@@ -100,6 +101,8 @@ export default function AnalyticsPage() {
             <ModelBreakdown data={data.models} />
             <KeyBreakdown data={data.keys} />
           </div>
+
+          {data.tools.length > 0 && <ToolBreakdown data={data.tools} />}
         </>
       )}
     </div>

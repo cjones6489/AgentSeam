@@ -6,6 +6,7 @@ import { NullSpend } from "@nullspend/sdk";
 import { loadConfig, ConfigError } from "./config.js";
 import { discoverUpstreamTools, registerProxyHandlers } from "./proxy.js";
 import { isToolGated } from "./gate.js";
+import { CostTracker, ToolCostRegistry, estimateToolCost } from "./cost-tracker.js";
 
 const LOG_PREFIX = "[nullspend-proxy]";
 
@@ -87,28 +88,37 @@ async function main() {
     apiKey: config.nullspendApiKey,
   });
 
-  const server = new Server(
-    { name: "nullspend-proxy", version: "0.1.0" },
-    { capabilities: { tools: {} } },
-  );
+  let costTracker: CostTracker | undefined;
+  if (config.costTrackingEnabled) {
+    costTracker = new CostTracker({
+      backendUrl: config.backendUrl,
+      platformKey: config.platformKey,
+      userId: config.userId,
+      keyId: config.keyId,
+      serverName: config.serverName,
+      budgetEnforcementEnabled: config.budgetEnforcementEnabled,
+      toolCostOverrides: config.toolCostOverrides,
+    });
+    log(`Cost tracking enabled (backend: ${config.backendUrl}, server: ${config.serverName})`);
 
-  registerProxyHandlers(
-    server,
-    upstreamClient,
-    sdk,
-    config,
-    cachedTools,
-    shutdownController.signal,
-  );
+    // Register discovered tools with dashboard and fetch user-configured costs
+    const registry = new ToolCostRegistry({
+      nullspendUrl: config.nullspendUrl,
+      apiKey: config.nullspendApiKey,
+      serverName: config.serverName,
+    });
 
-  const serverTransport = new StdioServerTransport();
-  await server.connect(serverTransport);
-  log(`Proxy running (stdio). API → ${config.nullspendUrl}`);
+    const discoverPayloads = cachedTools.map((t) => ({
+      name: t.name,
+      description: t.description ?? null,
+      annotations: (t.annotations as Record<string, unknown> | undefined) ?? null,
+      tierCost: estimateToolCost(t.name, t.annotations, config.toolCostOverrides),
+    }));
 
-  upstreamTransport.onclose = () => {
-    log("Upstream server disconnected. Shutting down.");
-    shutdown();
-  };
+    await registry.discoverTools(discoverPayloads);
+    await registry.fetchCosts();
+    costTracker.setRegistry(registry);
+  }
 
   let isShuttingDown = false;
 
@@ -118,6 +128,14 @@ async function main() {
 
     log("Shutting down...");
     shutdownController.abort();
+
+    if (costTracker) {
+      try {
+        await costTracker.shutdown();
+      } catch {
+        // best-effort flush
+      }
+    }
 
     try {
       await server.close();
@@ -134,9 +152,43 @@ async function main() {
     process.exit(0);
   }
 
+  // Register signal handlers BEFORE server setup so costTracker is
+  // always cleaned up, even if registerProxyHandlers or connect throws.
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
   process.stdin.on("close", shutdown);
+
+  const server = new Server(
+    { name: "nullspend-proxy", version: "0.1.0" },
+    { capabilities: { tools: {} } },
+  );
+
+  try {
+    registerProxyHandlers(
+      server,
+      upstreamClient,
+      sdk,
+      config,
+      cachedTools,
+      shutdownController.signal,
+      costTracker,
+    );
+
+    const serverTransport = new StdioServerTransport();
+    await server.connect(serverTransport);
+    log(`Proxy running (stdio). API → ${config.nullspendUrl}`);
+  } catch (err) {
+    // Clean up costTracker before re-throwing startup error
+    if (costTracker) {
+      try { await costTracker.shutdown(); } catch { /* best-effort */ }
+    }
+    throw err;
+  }
+
+  upstreamTransport.onclose = () => {
+    log("Upstream server disconnected. Shutting down.");
+    shutdown();
+  };
 }
 
 main().catch((err) => {

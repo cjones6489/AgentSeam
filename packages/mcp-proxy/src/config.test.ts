@@ -5,6 +5,10 @@ const REQUIRED_ENV = {
   NULLSPEND_URL: "http://127.0.0.1:3000",
   NULLSPEND_API_KEY: "ask_test123",
   UPSTREAM_COMMAND: "node",
+  NULLSPEND_BACKEND_URL: "http://localhost:8787",
+  NULLSPEND_PLATFORM_KEY: "pk-test",
+  NULLSPEND_USER_ID: "user-1",
+  NULLSPEND_KEY_ID: "key-1",
 };
 
 describe("loadConfig", () => {
@@ -183,5 +187,172 @@ describe("loadConfig", () => {
     process.env.GATED_TOOLS = "  ";
     const config = loadConfig();
     expect(config.gatedTools).toEqual(new Set());
+  });
+
+  // --- Cost tracking config ---
+
+  it("enables cost tracking by default", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    const config = loadConfig();
+    expect(config.costTrackingEnabled).toBe(true);
+    expect(config.budgetEnforcementEnabled).toBe(true);
+  });
+
+  it("disables cost tracking when NULLSPEND_COST_TRACKING=false", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.NULLSPEND_COST_TRACKING = "false";
+    const config = loadConfig();
+    expect(config.costTrackingEnabled).toBe(false);
+  });
+
+  it("disables budget enforcement when NULLSPEND_BUDGET_ENFORCEMENT=false", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.NULLSPEND_BUDGET_ENFORCEMENT = "false";
+    const config = loadConfig();
+    expect(config.budgetEnforcementEnabled).toBe(false);
+  });
+
+  it("throws ConfigError when cost tracking enabled but NULLSPEND_BACKEND_URL missing", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    delete process.env.NULLSPEND_BACKEND_URL;
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("NULLSPEND_BACKEND_URL");
+  });
+
+  it("throws ConfigError when cost tracking enabled but NULLSPEND_PLATFORM_KEY missing", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    delete process.env.NULLSPEND_PLATFORM_KEY;
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("NULLSPEND_PLATFORM_KEY");
+  });
+
+  it("throws ConfigError when cost tracking enabled but NULLSPEND_USER_ID missing", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    delete process.env.NULLSPEND_USER_ID;
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("NULLSPEND_USER_ID");
+  });
+
+  it("throws ConfigError when cost tracking enabled but NULLSPEND_KEY_ID missing", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    delete process.env.NULLSPEND_KEY_ID;
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("NULLSPEND_KEY_ID");
+  });
+
+  it("does not require cost tracking vars when NULLSPEND_COST_TRACKING=false", () => {
+    Object.assign(process.env, {
+      NULLSPEND_URL: "http://127.0.0.1:3000",
+      NULLSPEND_API_KEY: "ask_test123",
+      UPSTREAM_COMMAND: "node",
+      NULLSPEND_COST_TRACKING: "false",
+    });
+    // No NULLSPEND_BACKEND_URL etc.
+    const config = loadConfig();
+    expect(config.costTrackingEnabled).toBe(false);
+    expect(config.backendUrl).toBe("");
+  });
+
+  it("reads cost tracking config fields", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    const config = loadConfig();
+    expect(config.backendUrl).toBe("http://localhost:8787");
+    expect(config.platformKey).toBe("pk-test");
+    expect(config.userId).toBe("user-1");
+    expect(config.keyId).toBe("key-1");
+  });
+
+  it("defaults serverName to UPSTREAM_COMMAND", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    const config = loadConfig();
+    expect(config.serverName).toBe("node");
+  });
+
+  it("uses NULLSPEND_SERVER_NAME when set", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.NULLSPEND_SERVER_NAME = "my-server";
+    const config = loadConfig();
+    expect(config.serverName).toBe("my-server");
+  });
+
+  it("throws ConfigError when NULLSPEND_SERVER_NAME contains '/'", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.NULLSPEND_SERVER_NAME = "server/name";
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("/");
+  });
+
+  it("trims whitespace from NULLSPEND_SERVER_NAME", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.NULLSPEND_SERVER_NAME = "  my-server  ";
+    const config = loadConfig();
+    expect(config.serverName).toBe("my-server");
+  });
+
+  it("throws ConfigError when NULLSPEND_SERVER_NAME is whitespace-only", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.NULLSPEND_SERVER_NAME = "   ";
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("empty");
+  });
+
+  it("defaults toolCostOverrides to empty object", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    const config = loadConfig();
+    expect(config.toolCostOverrides).toEqual({});
+  });
+
+  it("parses NULLSPEND_TOOL_COSTS as JSON object", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.NULLSPEND_TOOL_COSTS = '{"run_query": 50000, "list_files": 0}';
+    const config = loadConfig();
+    expect(config.toolCostOverrides).toEqual({ run_query: 50000, list_files: 0 });
+  });
+
+  it("throws ConfigError when NULLSPEND_TOOL_COSTS is invalid JSON", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.NULLSPEND_TOOL_COSTS = "not-json";
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("NULLSPEND_TOOL_COSTS is not valid JSON");
+  });
+
+  it("throws ConfigError when NULLSPEND_TOOL_COSTS is an array", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.NULLSPEND_TOOL_COSTS = "[1, 2]";
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("JSON object");
+  });
+
+  it("throws ConfigError when NULLSPEND_TOOL_COSTS has negative value", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.NULLSPEND_TOOL_COSTS = '{"tool": -1}';
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("non-negative number");
+  });
+
+  it("throws ConfigError when NULLSPEND_TOOL_COSTS has non-numeric value", () => {
+    Object.assign(process.env, REQUIRED_ENV);
+    process.env.NULLSPEND_TOOL_COSTS = '{"tool": "expensive"}';
+    expect(() => loadConfig()).toThrow(ConfigError);
+    expect(() => loadConfig()).toThrow("non-negative number");
+  });
+
+  it("lists all missing cost tracking vars at once", () => {
+    Object.assign(process.env, {
+      NULLSPEND_URL: "http://127.0.0.1:3000",
+      NULLSPEND_API_KEY: "ask_test123",
+      UPSTREAM_COMMAND: "node",
+    });
+    // No cost tracking vars set
+    try {
+      loadConfig();
+    } catch (err) {
+      expect(err).toBeInstanceOf(ConfigError);
+      const msg = (err as ConfigError).message;
+      expect(msg).toContain("NULLSPEND_BACKEND_URL");
+      expect(msg).toContain("NULLSPEND_PLATFORM_KEY");
+      expect(msg).toContain("NULLSPEND_USER_ID");
+      expect(msg).toContain("NULLSPEND_KEY_ID");
+    }
   });
 });

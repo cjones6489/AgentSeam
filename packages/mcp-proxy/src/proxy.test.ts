@@ -61,6 +61,14 @@ function makeConfig(overrides: Partial<ProxyConfig> = {}): ProxyConfig {
     gatedTools: "*",
     passthroughTools: new Set<string>(),
     approvalTimeoutSeconds: 300,
+    backendUrl: "http://localhost:8787",
+    platformKey: "pk-test",
+    userId: "user-1",
+    keyId: "key-1",
+    serverName: "test-server",
+    costTrackingEnabled: true,
+    budgetEnforcementEnabled: true,
+    toolCostOverrides: {},
     ...overrides,
   };
 }
@@ -286,8 +294,9 @@ describe("registerProxyHandlers", () => {
           content: [{ type: "text", text: "query result" }],
         }),
       });
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         content: [{ type: "text", text: "query result" }],
+        actionId: "act-1",
       });
     });
 
@@ -552,6 +561,580 @@ describe("registerProxyHandlers", () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain("upstream boom");
+    });
+  });
+
+  describe("tools/call - cost tracking", () => {
+    it("blocks tool call when budget is denied", async () => {
+      mockedIsToolGated.mockReturnValue(false);
+
+      const mockCostTracker = {
+        estimateCost: vi.fn().mockReturnValue(10_000),
+        checkBudget: vi.fn().mockResolvedValue({
+          allowed: false,
+          denied: true,
+          remaining: 5,
+        }),
+        reportEvent: vi.fn(),
+        config: { serverName: "test-server" },
+        shutdown: vi.fn(),
+      };
+
+      const fakeServer = makeFakeServer();
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
+
+      registerProxyHandlers(
+        fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
+        makeFakeUpstreamClient(),
+        sdk,
+        makeConfig(),
+        [],
+        new AbortController().signal,
+        mockCostTracker as any,
+      );
+
+      const handler = fakeServer.callToolHandler!;
+      const result = (await handler({
+        params: { name: "expensive_tool", arguments: {} },
+      })) as { content: Array<{ text: string }>; isError: boolean };
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("budget exceeded");
+      expect(mockCallTool).not.toHaveBeenCalled();
+    });
+
+    it("forwards tool call and reports event when budget allows", async () => {
+      mockedIsToolGated.mockReturnValue(false);
+      mockCallTool.mockResolvedValue({
+        content: [{ type: "text", text: "result" }],
+      });
+
+      const mockCostTracker = {
+        estimateCost: vi.fn().mockReturnValue(10_000),
+        checkBudget: vi.fn().mockResolvedValue({
+          allowed: true,
+          reservationId: "rsv-1",
+        }),
+        reportEvent: vi.fn(),
+        config: { serverName: "test-server" },
+        shutdown: vi.fn(),
+      };
+
+      const fakeServer = makeFakeServer();
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
+
+      registerProxyHandlers(
+        fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
+        makeFakeUpstreamClient(),
+        sdk,
+        makeConfig(),
+        [],
+        new AbortController().signal,
+        mockCostTracker as any,
+      );
+
+      const handler = fakeServer.callToolHandler!;
+      const result = (await handler({
+        params: { name: "read_file", arguments: { path: "/test" } },
+      })) as { content: Array<{ text: string }> };
+
+      expect(result.content[0].text).toBe("result");
+      expect(mockCostTracker.reportEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toolName: "read_file",
+          serverName: "test-server",
+          costMicrodollars: 10_000,
+          status: "success",
+          reservationId: "rsv-1",
+        }),
+      );
+    });
+
+    it("reports error status when tool call fails", async () => {
+      mockedIsToolGated.mockReturnValue(false);
+      mockCallTool.mockRejectedValue(new Error("upstream crash"));
+
+      const mockCostTracker = {
+        estimateCost: vi.fn().mockReturnValue(10_000),
+        checkBudget: vi.fn().mockResolvedValue({ allowed: true }),
+        reportEvent: vi.fn(),
+        config: { serverName: "test-server" },
+        shutdown: vi.fn(),
+      };
+
+      const fakeServer = makeFakeServer();
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
+
+      registerProxyHandlers(
+        fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
+        makeFakeUpstreamClient(),
+        sdk,
+        makeConfig(),
+        [],
+        new AbortController().signal,
+        mockCostTracker as any,
+      );
+
+      const handler = fakeServer.callToolHandler!;
+      const result = (await handler({
+        params: { name: "read_file", arguments: {} },
+      })) as { content: Array<{ text: string }>; isError: boolean };
+
+      expect(result.isError).toBe(true);
+      expect(mockCostTracker.reportEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: "error",
+        }),
+      );
+    });
+
+    it("skips budget check for free tools (cost 0)", async () => {
+      mockedIsToolGated.mockReturnValue(false);
+      mockCallTool.mockResolvedValue({
+        content: [{ type: "text", text: "data" }],
+      });
+
+      const mockCostTracker = {
+        estimateCost: vi.fn().mockReturnValue(0),
+        checkBudget: vi.fn(),
+        reportEvent: vi.fn(),
+        config: { serverName: "test-server" },
+        shutdown: vi.fn(),
+      };
+
+      const fakeServer = makeFakeServer();
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
+
+      registerProxyHandlers(
+        fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
+        makeFakeUpstreamClient(),
+        sdk,
+        makeConfig(),
+        [],
+        new AbortController().signal,
+        mockCostTracker as any,
+      );
+
+      const handler = fakeServer.callToolHandler!;
+      await handler({ params: { name: "free_tool", arguments: {} } });
+
+      expect(mockCostTracker.checkBudget).not.toHaveBeenCalled();
+      expect(mockCallTool).toHaveBeenCalled();
+      expect(mockCostTracker.reportEvent).toHaveBeenCalled();
+    });
+
+    it("uses tool annotations from cachedTools for cost estimation", async () => {
+      mockedIsToolGated.mockReturnValue(false);
+      mockCallTool.mockResolvedValue({
+        content: [{ type: "text", text: "ok" }],
+      });
+
+      const mockCostTracker = {
+        estimateCost: vi.fn().mockReturnValue(0),
+        checkBudget: vi.fn(),
+        reportEvent: vi.fn(),
+        config: { serverName: "test-server" },
+        shutdown: vi.fn(),
+      };
+
+      const cachedTools = [
+        {
+          name: "read_file",
+          description: "Read a file",
+          inputSchema: { type: "object" as const },
+          annotations: { readOnlyHint: true },
+        },
+      ];
+
+      const fakeServer = makeFakeServer();
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
+
+      registerProxyHandlers(
+        fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
+        makeFakeUpstreamClient(),
+        sdk,
+        makeConfig(),
+        cachedTools,
+        new AbortController().signal,
+        mockCostTracker as any,
+      );
+
+      const handler = fakeServer.callToolHandler!;
+      await handler({ params: { name: "read_file", arguments: {} } });
+
+      expect(mockCostTracker.estimateCost).toHaveBeenCalledWith(
+        "read_file",
+        { readOnlyHint: true },
+      );
+    });
+
+    it("works without cost tracker (backward compatible)", async () => {
+      mockedIsToolGated.mockReturnValue(false);
+      mockCallTool.mockResolvedValue({
+        content: [{ type: "text", text: "result" }],
+      });
+
+      const fakeServer = makeFakeServer();
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
+
+      registerProxyHandlers(
+        fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
+        makeFakeUpstreamClient(),
+        sdk,
+        makeConfig(),
+        [],
+        new AbortController().signal,
+        // No costTracker
+      );
+
+      const handler = fakeServer.callToolHandler!;
+      const result = (await handler({
+        params: { name: "tool", arguments: {} },
+      })) as { content: Array<{ text: string }> };
+
+      expect(result.content[0].text).toBe("result");
+    });
+
+    it("reports denied event when budget blocks the call", async () => {
+      mockedIsToolGated.mockReturnValue(false);
+
+      const mockCostTracker = {
+        estimateCost: vi.fn().mockReturnValue(10_000),
+        checkBudget: vi.fn().mockResolvedValue({
+          allowed: false,
+          denied: true,
+          remaining: 5,
+        }),
+        reportEvent: vi.fn(),
+        config: { serverName: "test-server" },
+        shutdown: vi.fn(),
+      };
+
+      const fakeServer = makeFakeServer();
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
+
+      registerProxyHandlers(
+        fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
+        makeFakeUpstreamClient(),
+        sdk,
+        makeConfig(),
+        [],
+        new AbortController().signal,
+        mockCostTracker as any,
+      );
+
+      const handler = fakeServer.callToolHandler!;
+      await handler({
+        params: { name: "expensive_tool", arguments: {} },
+      });
+
+      expect(mockCostTracker.reportEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toolName: "expensive_tool",
+          serverName: "test-server",
+          durationMs: 0,
+          costMicrodollars: 0,
+          status: "denied",
+        }),
+      );
+    });
+
+    it("includes actionId from gated call in cost event", async () => {
+      mockedIsToolGated.mockReturnValue(true);
+      mockedGateToolCall.mockResolvedValue({
+        actionId: "act-cost-1",
+        decision: "approved",
+      } satisfies GateResult);
+      mockCallTool.mockResolvedValue({
+        content: [{ type: "text", text: "ok" }],
+      });
+      mockMarkResult.mockResolvedValue({ id: "act-cost-1", status: "executed" });
+
+      const mockCostTracker = {
+        estimateCost: vi.fn().mockReturnValue(10_000),
+        checkBudget: vi.fn().mockResolvedValue({
+          allowed: true,
+          reservationId: "rsv-g1",
+        }),
+        reportEvent: vi.fn(),
+        config: { serverName: "test-server" },
+        shutdown: vi.fn(),
+      };
+
+      const fakeServer = makeFakeServer();
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
+
+      registerProxyHandlers(
+        fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
+        makeFakeUpstreamClient(),
+        sdk,
+        makeConfig(),
+        [],
+        new AbortController().signal,
+        mockCostTracker as any,
+      );
+
+      const handler = fakeServer.callToolHandler!;
+      await handler({
+        params: { name: "run_query", arguments: { sql: "SELECT 1" } },
+      });
+
+      expect(mockCostTracker.reportEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          toolName: "run_query",
+          actionId: "act-cost-1",
+          reservationId: "rsv-g1",
+          status: "success",
+        }),
+      );
+    });
+
+    it("reports durationMs that measures upstream time for non-gated calls", async () => {
+      mockedIsToolGated.mockReturnValue(false);
+
+      // Upstream takes ~10ms
+      mockCallTool.mockImplementation(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+        return { content: [{ type: "text", text: "ok" }] };
+      });
+
+      const mockCostTracker = {
+        estimateCost: vi.fn().mockReturnValue(0),
+        checkBudget: vi.fn(),
+        reportEvent: vi.fn(),
+        config: { serverName: "test-server" },
+        shutdown: vi.fn(),
+      };
+
+      const fakeServer = makeFakeServer();
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
+
+      registerProxyHandlers(
+        fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
+        makeFakeUpstreamClient(),
+        sdk,
+        makeConfig(),
+        [],
+        new AbortController().signal,
+        mockCostTracker as any,
+      );
+
+      const handler = fakeServer.callToolHandler!;
+      await handler({ params: { name: "tool", arguments: {} } });
+
+      const event = mockCostTracker.reportEvent.mock.calls[0][0];
+      expect(event.durationMs).toBeGreaterThanOrEqual(5);
+      expect(event.durationMs).toBeLessThan(5000);
+    });
+
+    it("reports only upstream durationMs for gated calls, not gate wait", async () => {
+      mockedIsToolGated.mockReturnValue(true);
+
+      // Gate wait: ~30ms (simulated)
+      mockedGateToolCall.mockImplementation(async () => {
+        await new Promise((r) => setTimeout(r, 30));
+        return { actionId: "act-dur", decision: "approved" as const };
+      });
+
+      // Upstream: ~10ms
+      mockCallTool.mockImplementation(async () => {
+        await new Promise((r) => setTimeout(r, 10));
+        return { content: [{ type: "text", text: "ok" }] };
+      });
+      mockMarkResult.mockResolvedValue({});
+
+      const mockCostTracker = {
+        estimateCost: vi.fn().mockReturnValue(10_000),
+        checkBudget: vi.fn().mockResolvedValue({ allowed: true }),
+        reportEvent: vi.fn(),
+        config: { serverName: "test-server" },
+        shutdown: vi.fn(),
+      };
+
+      const fakeServer = makeFakeServer();
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
+
+      registerProxyHandlers(
+        fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
+        makeFakeUpstreamClient(),
+        sdk,
+        makeConfig(),
+        [],
+        new AbortController().signal,
+        mockCostTracker as any,
+      );
+
+      const handler = fakeServer.callToolHandler!;
+      await handler({ params: { name: "tool", arguments: {} } });
+
+      const event = mockCostTracker.reportEvent.mock.calls[0][0];
+      // Duration should be ~10ms (upstream), not ~40ms+ (gate + upstream)
+      expect(event.durationMs).toBeLessThan(25);
+    });
+
+    it("reports durationMs=0 for rejected gated calls (no upstream execution)", async () => {
+      mockedIsToolGated.mockReturnValue(true);
+      mockedGateToolCall.mockResolvedValue({
+        actionId: "act-rej-dur",
+        decision: "rejected",
+      } satisfies GateResult);
+
+      const mockCostTracker = {
+        estimateCost: vi.fn().mockReturnValue(10_000),
+        checkBudget: vi.fn().mockResolvedValue({ allowed: true }),
+        reportEvent: vi.fn(),
+        config: { serverName: "test-server" },
+        shutdown: vi.fn(),
+      };
+
+      const fakeServer = makeFakeServer();
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
+
+      registerProxyHandlers(
+        fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
+        makeFakeUpstreamClient(),
+        sdk,
+        makeConfig(),
+        [],
+        new AbortController().signal,
+        mockCostTracker as any,
+      );
+
+      const handler = fakeServer.callToolHandler!;
+      await handler({ params: { name: "tool", arguments: {} } });
+
+      const event = mockCostTracker.reportEvent.mock.calls[0][0];
+      // No upstream call happened, so duration should be 0
+      expect(event.durationMs).toBe(0);
+    });
+
+    it("includes actionId for rejected gated calls", async () => {
+      mockedIsToolGated.mockReturnValue(true);
+      mockedGateToolCall.mockResolvedValue({
+        actionId: "act-rej-1",
+        decision: "rejected",
+      } satisfies GateResult);
+
+      const mockCostTracker = {
+        estimateCost: vi.fn().mockReturnValue(10_000),
+        checkBudget: vi.fn().mockResolvedValue({ allowed: true }),
+        reportEvent: vi.fn(),
+        config: { serverName: "test-server" },
+        shutdown: vi.fn(),
+      };
+
+      const fakeServer = makeFakeServer();
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
+
+      registerProxyHandlers(
+        fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
+        makeFakeUpstreamClient(),
+        sdk,
+        makeConfig(),
+        [],
+        new AbortController().signal,
+        mockCostTracker as any,
+      );
+
+      const handler = fakeServer.callToolHandler!;
+      await handler({
+        params: { name: "delete_file", arguments: {} },
+      });
+
+      expect(mockCostTracker.reportEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actionId: "act-rej-1",
+          status: "error",
+        }),
+      );
+    });
+
+    it("handles tool not in cachedTools (annotations undefined, TIER_READ default)", async () => {
+      mockedIsToolGated.mockReturnValue(false);
+      mockCallTool.mockResolvedValue({
+        content: [{ type: "text", text: "ok" }],
+      });
+
+      const mockCostTracker = {
+        estimateCost: vi.fn().mockReturnValue(10_000),
+        checkBudget: vi.fn().mockResolvedValue({ allowed: true }),
+        reportEvent: vi.fn(),
+        config: { serverName: "test-server" },
+        shutdown: vi.fn(),
+      };
+
+      // cachedTools does NOT contain "dynamic_tool"
+      const cachedTools = [
+        { name: "other_tool", description: "Other", inputSchema: { type: "object" as const } },
+      ];
+
+      const fakeServer = makeFakeServer();
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
+
+      registerProxyHandlers(
+        fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
+        makeFakeUpstreamClient(),
+        sdk,
+        makeConfig(),
+        cachedTools,
+        new AbortController().signal,
+        mockCostTracker as any,
+      );
+
+      const handler = fakeServer.callToolHandler!;
+      await handler({ params: { name: "dynamic_tool", arguments: {} } });
+
+      // Should pass undefined annotations → defaults to TIER_READ
+      expect(mockCostTracker.estimateCost).toHaveBeenCalledWith("dynamic_tool", undefined);
+      expect(mockCallTool).toHaveBeenCalled();
+    });
+
+    it("budget check happens before gate check", async () => {
+      const callOrder: string[] = [];
+
+      const mockCostTracker = {
+        estimateCost: vi.fn().mockReturnValue(100_000),
+        checkBudget: vi.fn().mockImplementation(async () => {
+          callOrder.push("budget");
+          return { allowed: false, denied: true, remaining: 0 };
+        }),
+        reportEvent: vi.fn(),
+        config: { serverName: "test-server" },
+        shutdown: vi.fn(),
+      };
+
+      mockedIsToolGated.mockImplementation(() => {
+        callOrder.push("gate");
+        return true;
+      });
+      mockedGateToolCall.mockImplementation(async () => {
+        callOrder.push("gateCall");
+        return { actionId: "act-1", decision: "approved" as const };
+      });
+
+      const fakeServer = makeFakeServer();
+      const sdk = new NullSpend({ baseUrl: "http://test", apiKey: "key" });
+
+      registerProxyHandlers(
+        fakeServer as unknown as import("@modelcontextprotocol/sdk/server/index.js").Server,
+        makeFakeUpstreamClient(),
+        sdk,
+        makeConfig(),
+        [],
+        new AbortController().signal,
+        mockCostTracker as any,
+      );
+
+      const handler = fakeServer.callToolHandler!;
+      const result = (await handler({
+        params: { name: "tool", arguments: {} },
+      })) as { content: Array<{ text: string }>; isError: boolean };
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("budget exceeded");
+      // Budget check should have been called, but gate check should NOT
+      expect(callOrder).toEqual(["budget"]);
+      expect(mockedGateToolCall).not.toHaveBeenCalled();
     });
   });
 });
